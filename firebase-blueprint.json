@@ -1,0 +1,127 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A chapter member or admin.",
+      "type": "object",
+      "properties": {
+        "first_name": { "type": "string" },
+        "last_name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "role": { "type": "string", "enum": ["member", "admin"] },
+        "chapter_role": { "type": "string" },
+        "crossing_year": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["first_name", "last_name", "email", "role"]
+    },
+    "Submission": {
+      "title": "Submission",
+      "description": "A receipt submission for tracking spend.",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "user_name": { "type": "string" },
+        "receipt_date": { "type": "string", "format": "date" },
+        "business_name": { "type": "string" },
+        "amount_spent": { "type": "number" },
+        "sigma_members_attended": { "type": "integer" },
+        "receipt_file_url": { "type": "string" },
+        "category": { "type": "string" },
+        "black_owned_status": { "type": "string", "enum": ["yes", "no"] },
+        "city": { "type": "string" },
+        "state": { "type": "string" },
+        "business_address": { "type": "string" },
+        "zip_code": { "type": "string" },
+        "notes": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "duplicate_flag": { "type": "boolean" },
+        "admin_notes": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "receipt_date", "business_name", "amount_spent", "status"]
+    },
+    "Business": {
+      "title": "Business",
+      "description": "A normalized business entity.",
+      "type": "object",
+      "properties": {
+        "business_name": { "type": "string" },
+        "city": { "type": "string" },
+        "state": { "type": "string" },
+        "business_address": { "type": "string" },
+        "zip_code": { "type": "string" },
+        "category": { "type": "string" },
+        "black_owned_verified": { "type": "boolean" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["business_name"]
+    },
+    "YearlyGoal": {
+      "title": "YearlyGoal",
+      "description": "A spending goal for a specific year.",
+      "type": "object",
+      "properties": {
+        "year": { "type": "integer" },
+        "goal_amount": { "type": "number" }
+      },
+      "required": ["year", "goal_amount"]
+    },
+    "MonthlyGoal": {
+      "title": "MonthlyGoal",
+      "description": "A spending goal for a specific month.",
+      "type": "object",
+      "properties": {
+        "month": { "type": "integer" },
+        "year": { "type": "integer" },
+        "goal_amount": { "type": "number" }
+      },
+      "required": ["month", "year", "goal_amount"]
+    },
+    "Mail": {
+      "title": "Mail",
+      "description": "Email document for Trigger Email extension",
+      "type": "object",
+      "properties": {
+        "to": { "type": "string" },
+        "message": {
+          "type": "object",
+          "properties": {
+            "subject": { "type": "string" },
+            "html": { "type": "string" }
+          }
+        },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["to", "message"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles."
+    },
+    "/submissions/{submissionId}": {
+      "schema": "Submission",
+      "description": "Receipt submissions."
+    },
+    "/businesses/{businessId}": {
+      "schema": "Business",
+      "description": "Directory of businesses."
+    },
+    "/yearly_goals/{goalId}": {
+      "schema": "YearlyGoal",
+      "description": "Chapter yearly goals."
+    },
+    "/monthly_goals/{goalId}": {
+      "schema": "MonthlyGoal",
+      "description": "Chapter monthly goals."
+    },
+    "/mail/{mailId}": {
+      "schema": "Mail",
+      "description": "Email trigger collection for Firebase Extension"
+    }
+  }
+}

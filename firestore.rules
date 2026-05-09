@@ -1,0 +1,236 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Fields:
+    //   - first_name: string (required)
+    //   - last_name: string (required)
+    //   - email: string (required, format: email)
+    //   - phone: string (optional)
+    //   - role: string (required, enum: ['member', 'admin'])
+    //   - chapter_role: string (optional)
+    //   - crossing_year: string (optional)
+    //   - created_at: timestamp (required)
+    //
+    // Collection: submissions
+    // Fields:
+    //   - user_id: string (required, immutable)
+    //   - user_name: string (required)
+    //   - receipt_date: string (required, format: YYYY-MM-DD)
+    //   - business_name: string (required)
+    //   - amount_spent: number (required, positive)
+    //   - sigma_members_attended: number (required, >= 1)
+    //   - receipt_file_url: string (required, URL)
+    //   - category: string (required)
+    //   - black_owned_status: string (required, enum: ['yes', 'no'])
+    //   - city: string (optional)
+    //   - state: string (optional)
+    //   - business_address: string (optional)
+    //   - zip_code: string (optional)
+    //   - notes: string (optional)
+    //   - status: string (required, enum: ['pending', 'approved', 'rejected'])
+    //   - duplicate_flag: bool (optional)
+    //   - admin_notes: string (optional)
+    //   - created_at: timestamp (required)
+    //   - updated_at: timestamp (required)
+    //
+    // Collection: businesses
+    // Fields:
+    //   - business_name: string (required)
+    //   - city: string (optional)
+    //   - state: string (optional)
+    //   - business_address: string (optional)
+    //   - zip_code: string (optional)
+    //   - category: string (optional)
+    //   - black_owned_verified: bool (optional)
+    //   - created_at: timestamp (required)
+    //
+    // Collection: yearly_goals
+    // Fields:
+    //   - year: number (required)
+    //   - goal_amount: number (required, positive)
+    //
+    // Collection: monthly_goals
+    // Fields:
+    //   - month: number (required, 1-12)
+    //   - year: number (required)
+    //   - goal_amount: number (required, positive)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (request.auth.token.email == "info@goblackly.com" ||
+         request.auth.token.get('email', '') == "info@goblackly.com" ||
+         request.auth.uid == "3ECpCuYmWAZuGOh1KvJQFWfGIua2" ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    function hasOnlyAllowedFields(data, fields) {
+      return data.keys().hasOnly(fields);
+    }
+
+    function hasRequiredFields(data, fields) {
+      return data.keys().hasAll(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      let allowedFields = ['first_name', 'last_name', 'email', 'phone', 'role', 'chapter_role', 'crossing_year', 'photo_url', 'created_at', 'uid', 'updated_at'];
+      let requiredFields = ['first_name', 'last_name', 'email', 'role', 'created_at'];
+      
+      return hasOnlyAllowedFields(data, allowedFields) &&
+        hasRequiredFields(data, requiredFields) &&
+        data.first_name is string && data.first_name.size() > 0 && data.first_name.size() < 100 &&
+        data.last_name is string && data.last_name.size() > 0 && data.last_name.size() < 100 &&
+        isValidEmail(data.email) &&
+        data.role in ['member', 'admin'] &&
+        (!('photo_url' in data) || data.photo_url is string) &&
+        data.created_at is timestamp;
+    }
+
+    function isValidSubmission(data) {
+      let allowedFields = ['user_id', 'user_name', 'receipt_date', 'business_name', 'amount_spent', 'sigma_members_attended', 'receipt_file_url', 'category', 'black_owned_status', 'city', 'state', 'business_address', 'zip_code', 'notes', 'status', 'duplicate_flag', 'admin_notes', 'created_at', 'updated_at'];
+      let requiredFields = ['user_id', 'user_name', 'receipt_date', 'business_name', 'amount_spent', 'sigma_members_attended', 'receipt_file_url', 'category', 'black_owned_status', 'status', 'created_at', 'updated_at'];
+      
+      return hasOnlyAllowedFields(data, allowedFields) &&
+        hasRequiredFields(data, requiredFields) &&
+        data.user_id is string &&
+        data.user_name is string &&
+        data.receipt_date is string && data.receipt_date.matches("^\\d{4}-\\d{2}-\\d{2}$") &&
+        data.business_name is string && data.business_name.size() > 0 && data.business_name.size() < 200 &&
+        data.amount_spent is number && data.amount_spent > 0 &&
+        data.sigma_members_attended is number && data.sigma_members_attended >= 1 &&
+        (data.receipt_file_url == "" || isValidUrl(data.receipt_file_url)) &&
+        data.category is string &&
+        data.black_owned_status in ['yes', 'no'] &&
+        data.status in ['pending', 'approved', 'rejected'] &&
+        data.created_at is timestamp &&
+        data.updated_at is timestamp;
+    }
+
+    function isValidBusiness(data) {
+      return hasOnlyAllowedFields(data, ['business_name', 'city', 'state', 'business_address', 'zip_code', 'category', 'black_owned_verified', 'created_at']) &&
+        data.business_name is string && data.business_name.size() > 0 &&
+        data.created_at is timestamp;
+    }
+
+    function isValidYearlyGoal(data) {
+      return hasOnlyAllowedFields(data, ['year', 'goal_amount']) &&
+        data.year is number &&
+        data.goal_amount is number && data.goal_amount > 0;
+    }
+
+    function isValidMonthlyGoal(data) {
+      return hasOnlyAllowedFields(data, ['month', 'year', 'goal_amount']) &&
+        data.month is number && data.month >= 1 && data.month <= 12 &&
+        data.year is number &&
+        data.goal_amount is number && data.goal_amount > 0;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      // Users can read their own profile. Admins can read all.
+      allow read: if isAuthenticated() && (
+        request.auth.uid == userId || 
+        request.auth.token.email == "info@goblackly.com" ||
+        request.auth.token.get('email', '') == "info@goblackly.com" ||
+        isAdmin()
+      );
+      
+      allow create: if isAuthenticated() && (
+        (request.auth.uid == userId && isValidUser(request.resource.data) && 
+         (request.resource.data.role == 'member' || request.auth.token.email == "info@goblackly.com" || request.auth.token.get('email', '') == "info@goblackly.com")) || 
+        isAdmin()
+      );
+      
+      allow update: if isAuthenticated() && (
+        (request.auth.uid == userId && isValidUser(request.resource.data) && 
+         (request.resource.data.role == resource.data.role || isAdmin())) || 
+        (isAdmin() && isValidUser(request.resource.data))
+      );
+    }
+
+    match /submissions/{submissionId} {
+      // Members can read their own submissions or any approved submission (for leaderboard/stats). Admins can read all.
+      allow read: if isAuthenticated() && (resource.data.user_id == request.auth.uid || isAdmin() || resource.data.status == 'approved');
+      
+      // Members can create submissions.
+      allow create: if isAuthenticated() && 
+                    request.resource.data.user_id == request.auth.uid && 
+                    request.resource.data.status == 'pending' &&
+                    isValidSubmission(request.resource.data);
+      
+      // Members can update their own pending submissions. Admins can update any.
+      allow update: if isAuthenticated() && (
+        (resource.data.user_id == request.auth.uid && resource.data.status == 'pending' && 
+         request.resource.data.user_id == resource.data.user_id &&
+         request.resource.data.status == 'pending' &&
+         isValidSubmission(request.resource.data)) ||
+        isAdmin()
+      );
+      
+      // Only admins can delete.
+      allow delete: if isAdmin();
+    }
+
+    match /businesses/{businessId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /yearly_goals/{goalId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() && isValidYearlyGoal(request.resource.data);
+    }
+
+    match /monthly_goals/{goalId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() && isValidMonthlyGoal(request.resource.data);
+    }
+
+    match /mail/{mailId} {
+      // Allow authenticated users to trigger emails
+      allow create: if isAuthenticated();
+      // Only admins can see the mail queue
+      allow read: if isAdmin();
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

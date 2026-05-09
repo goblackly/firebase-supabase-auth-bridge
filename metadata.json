@@ -1,0 +1,7 @@
+{
+  "name": "Black Spend Initiative - Kappa Upsilon Sigma Chapter",
+  "description": "Track and support economic growth within the community. The Sigma Spend Initiative by Phi Beta Sigma Fraternity, Inc. - Kappa Upsilon Sigma Chapter helps members log their spending at Sigma-owned businesses.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
