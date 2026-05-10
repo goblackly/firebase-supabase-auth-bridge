@@ -2,6 +2,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { cert, getApps, initializeApp } from 'npm:firebase-admin/app';
 import { getAuth } from 'npm:firebase-admin/auth';
 
+type EmailType = 'password-reset' | 'admin-created-account';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -78,8 +80,32 @@ async function fetchLastName(email: string) {
   return String(data?.last_name ?? '').trim();
 }
 
-function buildEmail(email: string, lastName: string, resetLink: string) {
+function buildEmail(email: string, lastName: string, resetLink: string, type: EmailType) {
   const greeting = buildGreeting(lastName);
+
+  if (type === 'admin-created-account') {
+    return {
+      to: email,
+      subject: 'Your Black Spend Initiative account is ready',
+      html: `
+        <div style="font-family: Arial, sans-serif; padding: 24px; color: #14213d; line-height: 1.6;">
+          <h2 style="color: #0f4fd6; margin: 0 0 20px;">Your Black Spend Initiative account is ready</h2>
+          <p style="margin: 0 0 16px;">${greeting}</p>
+          <p style="margin: 0 0 16px;">An administrator created your Black Spend Initiative account.</p>
+          <p style="margin: 0 0 16px;">Use the button below to set your password and finish getting started.</p>
+          <p style="margin: 28px 0;">
+            <a
+              href="${resetLink}"
+              style="display: inline-block; background: #0f4fd6; color: #ffffff; text-decoration: none; padding: 12px 20px; border-radius: 10px; font-weight: 700;"
+            >Set Password</a>
+          </p>
+          <p style="margin: 0 0 16px;">Once your password is set, you can sign in and begin submitting receipts and tracking your impact.</p>
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+          <p style="font-size: 12px; color: #667085; margin: 0;">Black Spend Initiative<br />Kappa Upsilon Sigma Chapter</p>
+        </div>
+      `,
+    };
+  }
 
   return {
     to: email,
@@ -126,7 +152,7 @@ Deno.serve(async (request) => {
     });
   }
 
-  let payload: { email?: string };
+  let payload: { email?: string; type?: EmailType };
 
   try {
     payload = await request.json();
@@ -138,6 +164,7 @@ Deno.serve(async (request) => {
   }
 
   const email = String(payload.email ?? '').trim().toLowerCase();
+  const emailType: EmailType = payload.type === 'admin-created-account' ? 'admin-created-account' : 'password-reset';
 
   if (!email) {
     return new Response(JSON.stringify({ error: 'Email is required' }), {
@@ -153,7 +180,7 @@ Deno.serve(async (request) => {
       handleCodeInApp: false,
     });
     const lastName = await fetchLastName(email);
-    const outboundEmail = buildEmail(email, lastName, resetLink);
+    const outboundEmail = buildEmail(email, lastName, resetLink, emailType);
 
     const resendResponse = await fetch('https://api.resend.com/emails', {
       method: 'POST',

@@ -143,6 +143,10 @@ export default function AdminUsers() {
         role: addFormData.role,
       });
 
+      void notificationService.notifyMemberAdminCreatedAccount({
+        email: addFormData.email,
+      });
+
       await deleteApp(secondaryApp);
 
       setIsAddModalOpen(false);

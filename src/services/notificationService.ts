@@ -98,7 +98,21 @@ export const notificationService = {
   },
 
   async requestPasswordResetEmail(email: string) {
-    await invokeFunction('send-password-reset-email', { email });
+    await invokeFunction('send-password-reset-email', {
+      email,
+      type: 'password-reset',
+    });
+  },
+
+  async notifyMemberAdminCreatedAccount(memberData: { email: string }) {
+    try {
+      await invokeFunction('send-password-reset-email', {
+        email: memberData.email,
+        type: 'admin-created-account',
+      });
+    } catch (error) {
+      logNotificationError('member admin-created account email', error);
+    }
   },
 
   async notifyAdminNewSubmission(submissionData: { memberName: string; businessName: string; amount: number }) {
