@@ -1,9 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
-import { syncUserProfileToSupabase } from '../services/supabaseBridge';
+import { updateUserProfileInSupabase } from '../services/supabaseBridge';
 import {
   User,
   Mail,
@@ -71,16 +69,8 @@ export default function Profile() {
     setSuccess(false);
 
     try {
-      const profileRef = doc(db, 'users', profile.uid);
-      await updateDoc(profileRef, {
-        first_name: formData.firstName,
-        last_name: formData.lastName,
-        phone: formData.phone,
-        photo_url: photoUrl,
-      });
-
-      await syncUserProfileToSupabase({
-        uid: profile.uid,
+      await updateUserProfileInSupabase(profile.uid, {
+        auth_user_id: profile.auth_user_id ?? user?.id,
         email: profile.email || user?.email || '',
         first_name: formData.firstName,
         last_name: formData.lastName,
@@ -95,7 +85,6 @@ export default function Profile() {
     } catch (err: any) {
       console.error('Update profile error:', err);
       setError('Failed to update profile. Please try again.');
-      handleFirestoreError(err, OperationType.UPDATE, `users/${profile.uid}`);
     } finally {
       setLoading(false);
     }

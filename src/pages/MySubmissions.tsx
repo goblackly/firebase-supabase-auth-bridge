@@ -17,7 +17,7 @@ import { Submission } from '../types';
 import { fetchUserSubmissions } from '../services/supabaseReads';
 
 export default function MySubmissions() {
-  const { user } = useAuth();
+  const { profile, user } = useAuth();
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
@@ -26,7 +26,7 @@ export default function MySubmissions() {
     let cancelled = false;
 
     async function loadSubmissions() {
-      if (!user) {
+      if (!user || !profile?.uid) {
         setSubmissions([]);
         setLoading(false);
         return;
@@ -35,7 +35,7 @@ export default function MySubmissions() {
       setLoading(true);
 
       try {
-        const data = await fetchUserSubmissions(user.uid);
+        const data = await fetchUserSubmissions(profile.uid);
         if (!cancelled) {
           setSubmissions(data);
         }
@@ -56,7 +56,7 @@ export default function MySubmissions() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [profile?.uid, user]);
 
   const filteredSubmissions = submissions.filter(sub => {
     if (filter === 'all') return true;

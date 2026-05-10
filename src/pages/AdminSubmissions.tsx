@@ -1,6 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { doc, updateDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
-import { db } from '../firebase';
 import Layout from '../components/Layout';
 import {
   CheckCircle2,
@@ -79,7 +77,6 @@ export default function AdminSubmissions() {
   };
 
   const handleStatusUpdate = async (submission: Submission, status: 'approved' | 'rejected') => {
-    const firebaseDocId = submission.firebase_doc_id;
     const nextAdminNotes = adminNotes.trim();
     const nextUpdatedAt = new Date().toISOString();
 
@@ -90,18 +87,6 @@ export default function AdminSubmissions() {
         nextAdminNotes,
         submission.duplicate_flag ?? false
       );
-
-      if (firebaseDocId) {
-        try {
-          await updateDoc(doc(db, 'submissions', firebaseDocId), {
-            status,
-            admin_notes: nextAdminNotes,
-            updated_at: serverTimestamp(),
-          });
-        } catch (firebaseError) {
-          console.warn('Firebase review mirror failed after Supabase review update:', firebaseError);
-        }
-      }
 
       setSubmissions((current) =>
         current.map((item) =>
@@ -149,18 +134,9 @@ export default function AdminSubmissions() {
 
   const handleDelete = async () => {
     if (!selectedSubmission) return;
-    const firebaseDocId = selectedSubmission.firebase_doc_id;
     setIsDeleting(true);
     try {
       await deleteSubmissionFromSupabase(selectedSubmission.id);
-
-      if (firebaseDocId) {
-        try {
-          await deleteDoc(doc(db, 'submissions', firebaseDocId));
-        } catch (firebaseError) {
-          console.warn('Firebase delete mirror failed after Supabase delete:', firebaseError);
-        }
-      }
 
       setSubmissions((current) => current.filter((item) => item.id !== selectedSubmission.id));
       setSelectedSubmission(null);

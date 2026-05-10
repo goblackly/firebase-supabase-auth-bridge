@@ -3,6 +3,7 @@ import type { Submission, UserProfile, YearlyGoal, MonthlyGoal } from '../types'
 import { resolveReceiptUrl } from './receiptStorage';
 
 type UserRow = {
+  auth_user_id: string | null;
   firebase_uid: string;
   email: string;
   first_name: string;
@@ -68,6 +69,7 @@ async function mapSubmission(row: SubmissionRow): Promise<Submission> {
 function mapUser(row: UserRow): UserProfile {
   return {
     uid: row.firebase_uid,
+    auth_user_id: row.auth_user_id ?? undefined,
     email: row.email,
     first_name: row.first_name,
     last_name: row.last_name,

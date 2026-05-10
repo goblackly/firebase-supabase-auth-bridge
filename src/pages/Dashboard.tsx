@@ -36,7 +36,7 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !profile?.uid) return;
 
     let cancelled = false;
 
@@ -47,7 +47,7 @@ export default function Dashboard() {
         const month = now.getMonth() + 1;
 
         const [userSubmissions, approvedSubmissions, currentYearlyGoal, currentMonthlyGoal] = await Promise.all([
-          fetchUserSubmissions(user.uid),
+          fetchUserSubmissions(profile.uid),
           fetchApprovedSubmissions(),
           fetchYearlyGoal(year),
           fetchMonthlyGoal(year, month),
@@ -108,7 +108,7 @@ export default function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [profile?.uid, user]);
 
   const yearlyProgressPercent = yearlyGoal ? Math.min(Math.round((currentYearSpend / yearlyGoal.goal_amount) * 100), 100) : 0;
   const monthlyProgressPercent = monthlyGoal ? Math.min(Math.round((currentMonthSpend / monthlyGoal.goal_amount) * 100), 100) : 0;

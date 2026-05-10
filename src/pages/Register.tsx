@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { supabase } from '../supabase';
 import { notificationService } from '../services/notificationService';
 import { syncUserProfileToSupabase } from '../services/supabaseBridge';
 import { UserPlus, AlertCircle } from 'lucide-react';
@@ -30,26 +28,28 @@ export default function Register() {
     setLoading(true);
 
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
-      const user = userCredential.user;
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: formData.email.trim(),
+        password: formData.password,
+      });
+
+      if (signUpError) {
+        throw signUpError;
+      }
+
+      const user = data.user;
+
+      if (!user) {
+        throw new Error('We could not create your account. Please try again.');
+      }
 
       const isAdmin = formData.email.toLowerCase() === 'info@goblackly.com';
-      const firestoreProfile = {
-        first_name: formData.firstName,
-        last_name: formData.lastName,
-        email: formData.email,
-        phone: formData.phone,
-        role: isAdmin ? 'admin' : 'member',
-        created_at: serverTimestamp(),
-      };
-
-      await setDoc(doc(db, 'users', user.uid), firestoreProfile);
-      await user.getIdToken(true);
 
       try {
         await syncUserProfileToSupabase({
-          uid: user.uid,
-          email: formData.email,
+          uid: user.id,
+          auth_user_id: user.id,
+          email: formData.email.trim(),
           first_name: formData.firstName,
           last_name: formData.lastName,
           phone: formData.phone,
@@ -71,7 +71,7 @@ export default function Register() {
         }),
       ]);
 
-      navigate('/');
+      navigate(data.session ? '/' : '/login');
     } catch (err: any) {
       setError(err.message || 'Failed to register. Please try again.');
     } finally {

@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
 import { notificationService } from '../services/notificationService';
-import { attachFirebaseDocIdToSubmission, syncSubmissionToSupabase, syncUserProfileToSupabase } from '../services/supabaseBridge';
+import { syncSubmissionToSupabase, syncUserProfileToSupabase } from '../services/supabaseBridge';
 import { uploadReceiptToSupabase } from '../services/receiptStorage';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
@@ -66,6 +64,10 @@ export default function SubmitReceipt() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    if (!profile?.uid) {
+      setError('Your profile is still loading. Please refresh and try again.');
+      return;
+    }
     if (!receiptFile) {
       setError('Please upload a receipt image.');
       return;
@@ -77,7 +79,7 @@ export default function SubmitReceipt() {
     try {
       let fileUrl = '';
       console.log('Starting storage upload...');
-      const uploadPromise = uploadReceiptToSupabase(user.uid, receiptFile);
+      const uploadPromise = uploadReceiptToSupabase(user.id, receiptFile);
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Storage upload timed out. Please check your connection.')), 20000)
       );
@@ -86,7 +88,7 @@ export default function SubmitReceipt() {
       console.log('Storage upload successful:', fileUrl);
 
       const submissionData = {
-        user_id: user.uid,
+        user_id: profile.uid,
         user_name: `${profile?.first_name} ${profile?.last_name}`.trim(),
         receipt_date: formData.receiptDate,
         business_name: formData.businessName,
@@ -101,14 +103,15 @@ export default function SubmitReceipt() {
         zip_code: formData.zipCode,
         notes: formData.notes,
         status: 'pending',
-        created_at: serverTimestamp(),
-        updated_at: serverTimestamp(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       };
 
       if (profile) {
         try {
           await syncUserProfileToSupabase({
-            uid: user.uid,
+            uid: profile.uid,
+            auth_user_id: user.id,
             email: profile.email ?? user.email ?? '',
             first_name: profile.first_name,
             last_name: profile.last_name,
@@ -120,7 +123,7 @@ export default function SubmitReceipt() {
           });
 
           await syncSubmissionToSupabase({
-            firebase_uid: user.uid,
+            firebase_uid: profile.uid,
             user_name: submissionData.user_name,
             receipt_date: submissionData.receipt_date,
             business_name: submissionData.business_name,
@@ -141,7 +144,8 @@ export default function SubmitReceipt() {
         }
       } else if (user.email) {
         await syncUserProfileToSupabase({
-          uid: user.uid,
+          uid: user.id,
+          auth_user_id: user.id,
           email: user.email,
           first_name: profile?.first_name ?? '',
           last_name: profile?.last_name ?? '',
@@ -153,7 +157,7 @@ export default function SubmitReceipt() {
         });
 
         await syncSubmissionToSupabase({
-          firebase_uid: user.uid,
+          firebase_uid: user.id,
           user_name: submissionData.user_name,
           receipt_date: submissionData.receipt_date,
           business_name: submissionData.business_name,
@@ -171,22 +175,6 @@ export default function SubmitReceipt() {
         });
       } else {
         throw new Error('Cannot sync submission to Supabase without a loaded user profile or email.');
-      }
-
-      try {
-        console.log('Saving to Firestore...');
-        const submissionRef = await addDoc(collection(db, 'submissions'), submissionData);
-        console.log('Firestore save successful');
-
-        if (submissionRef.id) {
-          try {
-            await attachFirebaseDocIdToSubmission(user.uid, submissionData.receipt_file_url, submissionRef.id);
-          } catch (syncError) {
-            console.warn('Supabase submission update with firebase_doc_id deferred:', syncError);
-          }
-        }
-      } catch (firestoreError) {
-        console.warn('Firestore submission mirror deferred:', firestoreError);
       }
 
       const memberName = `${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim() || 'Black Spend Member';
@@ -223,14 +211,6 @@ export default function SubmitReceipt() {
       }
 
       setError(errorMessage);
-
-      if (err.message?.includes('permission')) {
-        try {
-          handleFirestoreError(err, OperationType.CREATE, 'submissions');
-        } catch (e) {
-          // ignore re-throw
-        }
-      }
     } finally {
       setLoading(false);
     }

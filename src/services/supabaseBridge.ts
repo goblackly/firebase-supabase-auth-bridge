@@ -3,6 +3,7 @@ import { supabase } from '../supabase';
 
 export interface SupabaseUserProfilePayload {
   uid: string;
+  auth_user_id?: string;
   email: string;
   first_name: string;
   last_name: string;
@@ -51,6 +52,7 @@ export async function syncUserProfileToSupabase(profile: SupabaseUserProfilePayl
   }
 
   const payload = {
+    auth_user_id: sanitizeOptionalText(profile.auth_user_id),
     firebase_uid: profile.uid,
     email,
     first_name: profile.first_name.trim(),
@@ -63,6 +65,37 @@ export async function syncUserProfileToSupabase(profile: SupabaseUserProfilePayl
   } satisfies Record<string, unknown>;
 
   const { error } = await supabase.from('users').upsert(payload, { onConflict: 'firebase_uid' });
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function updateUserProfileInSupabase(
+  uid: string,
+  updates: Partial<Omit<SupabaseUserProfilePayload, 'uid'>>
+): Promise<void> {
+  const payload = {
+    auth_user_id: sanitizeOptionalText(updates.auth_user_id),
+    email: updates.email?.trim(),
+    first_name: updates.first_name?.trim(),
+    last_name: updates.last_name?.trim(),
+    phone: sanitizeOptionalText(updates.phone),
+    role: updates.role,
+    chapter_role: sanitizeOptionalText(updates.chapter_role),
+    crossing_year: sanitizeOptionalText(updates.crossing_year),
+    photo_url: sanitizeOptionalText(updates.photo_url),
+    updated_at: new Date().toISOString(),
+  } satisfies Record<string, unknown>;
+
+  const normalizedPayload = Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => value !== undefined)
+  );
+
+  const { error } = await supabase
+    .from('users')
+    .update(normalizedPayload)
+    .eq('firebase_uid', uid);
 
   if (error) {
     throw error;
@@ -148,4 +181,42 @@ export async function deleteSubmissionFromSupabase(submissionId: string): Promis
   if (error) {
     throw error;
   }
+}
+
+export async function updateGoalInSupabase(
+  table: 'yearly_goals' | 'monthly_goals',
+  payload: Record<string, unknown>,
+  match: Record<string, unknown>
+): Promise<any> {
+  let query = supabase.from(table).update(payload);
+
+  for (const [key, value] of Object.entries(match)) {
+    query = query.eq(key, value);
+  }
+
+  const { data, error } = await query.select().single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+export async function upsertGoalInSupabase(
+  table: 'yearly_goals' | 'monthly_goals',
+  payload: Record<string, unknown>,
+  onConflict: string
+): Promise<any> {
+  const { data, error } = await supabase
+    .from(table)
+    .upsert(payload, { onConflict })
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
 }

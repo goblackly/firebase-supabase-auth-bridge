@@ -1,8 +1,8 @@
 # send-password-reset-email
 
-Supabase Edge Function for branded password reset emails sent through Resend.
+Supabase Edge Function for branded password reset and account invitation emails sent through Resend.
 
-This function generates a Firebase password-reset action link on the backend and
+This function generates a Supabase recovery or invitation link on the backend and
 emails it using your Black Spend copy and branding.
 
 ## Required secrets
@@ -10,10 +10,7 @@ emails it using your Black Spend copy and branding.
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL`
 - `APP_URL` optional, defaults to `https://blackspend.pbskus.net`
-- `FIREBASE_PROJECT_ID`
-- `FIREBASE_CLIENT_EMAIL`
-- `FIREBASE_PRIVATE_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY` optional, used to personalize the greeting with the member's last name
+- `APP_SUPABASE_SERVICE_ROLE_KEY`
 
 ## Deploy
 

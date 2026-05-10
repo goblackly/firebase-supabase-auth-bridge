@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebase';
+import { supabase } from '../supabase';
 import { AlertCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -18,8 +17,15 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      await auth.currentUser?.getIdToken(true);
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        throw error;
+      }
+
       navigate('/');
     } catch (err: any) {
       setError(err.message || 'Failed to login. Please check your credentials.');

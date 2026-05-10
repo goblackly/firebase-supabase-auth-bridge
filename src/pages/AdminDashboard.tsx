@@ -1,8 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { doc, updateDoc, setDoc } from 'firebase/firestore';
-import { db } from '../firebase';
-import { supabase } from '../supabase';
 import Layout from '../components/Layout';
 import {
   Wallet,
@@ -18,6 +15,7 @@ import {
 import { motion } from 'motion/react';
 import { Submission, YearlyGoal, MonthlyGoal } from '../types';
 import { fetchAllSubmissions, fetchMonthlyGoal, fetchUserCount, fetchYearlyGoal } from '../services/supabaseReads';
+import { updateGoalInSupabase, upsertGoalInSupabase } from '../services/supabaseBridge';
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState({
@@ -165,22 +163,9 @@ export default function AdminDashboard() {
     if (isNaN(amount)) return;
 
     try {
-      if (yearlyGoal) {
-        await updateDoc(doc(db, 'yearly_goals', yearlyGoal.id), { goal_amount: amount });
-      } else {
-        const goalId = `${year}`;
-        await setDoc(doc(db, 'yearly_goals', goalId), { year, goal_amount: amount });
-      }
-
-      const { data, error: supabaseError } = await supabase
-        .from('yearly_goals')
-        .upsert({ year, goal_amount: amount }, { onConflict: 'year' })
-        .select()
-        .single();
-
-      if (supabaseError) {
-        throw supabaseError;
-      }
+      const data = yearlyGoal
+        ? await updateGoalInSupabase('yearly_goals', { goal_amount: amount }, { id: yearlyGoal.id })
+        : await upsertGoalInSupabase('yearly_goals', { year, goal_amount: amount }, 'year');
 
       setYearlyGoal(data as YearlyGoal);
       setIsEditingYearlyGoal(false);
@@ -197,25 +182,10 @@ export default function AdminDashboard() {
     if (isNaN(amount)) return;
 
     try {
-      if (monthlyGoal) {
-        await updateDoc(doc(db, 'monthly_goals', monthlyGoal.id), { goal_amount: amount });
-      } else {
-        const goalId = `${year}-${month}`;
-        await setDoc(doc(db, 'monthly_goals', goalId), { year, month, goal_amount: amount });
-      }
-
       const monthlyGoalPayload = { year, month, goal_amount: amount };
-      const monthlyGoalQuery = monthlyGoal
-        ? supabase.from('monthly_goals').update(monthlyGoalPayload).eq('id', monthlyGoal.id)
-        : supabase.from('monthly_goals').insert(monthlyGoalPayload);
-
-      const { data, error: supabaseError } = await monthlyGoalQuery
-        .select()
-        .single();
-
-      if (supabaseError) {
-        throw supabaseError;
-      }
+      const data = monthlyGoal
+        ? await updateGoalInSupabase('monthly_goals', monthlyGoalPayload, { id: monthlyGoal.id })
+        : await upsertGoalInSupabase('monthly_goals', monthlyGoalPayload, 'year,month');
 
       setMonthlyGoal(data as MonthlyGoal);
       setIsEditingMonthlyGoal(false);

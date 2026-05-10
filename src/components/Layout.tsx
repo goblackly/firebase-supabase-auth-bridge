@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { auth } from '../firebase';
+import { supabase } from '../supabase';
 import { 
   LayoutDashboard, 
   PlusCircle, 
@@ -29,7 +29,7 @@ export default function Layout({ children, title }: LayoutProps) {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
-    await auth.signOut();
+    await supabase.auth.signOut();
     navigate('/login');
   };
 

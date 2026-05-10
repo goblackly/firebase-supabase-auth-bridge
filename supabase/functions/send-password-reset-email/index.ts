@@ -1,6 +1,4 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { cert, getApps, initializeApp } from 'npm:firebase-admin/app';
-import { getAuth } from 'npm:firebase-admin/auth';
 
 type EmailType = 'password-reset' | 'admin-created-account';
 
@@ -29,43 +27,24 @@ function buildGreeting(lastName?: string) {
   return trimmed ? `Hi Bro. ${escapeHtml(trimmed)},` : 'Hi Bro.,';
 }
 
-function getFirebaseAdminAuth() {
-  const projectId = Deno.env.get('FIREBASE_PROJECT_ID');
-  const clientEmail = Deno.env.get('FIREBASE_CLIENT_EMAIL');
-  const privateKey = Deno.env.get('FIREBASE_PRIVATE_KEY')?.replace(/\\n/g, '\n');
-
-  if (!projectId || !clientEmail || !privateKey) {
-    throw new Error('Missing Firebase Admin credentials');
-  }
-
-  if (!getApps().length) {
-    initializeApp({
-      credential: cert({
-        projectId,
-        clientEmail,
-        privateKey,
-      }),
-    });
-  }
-
-  return getAuth();
-}
-
-async function fetchLastName(email: string) {
+function getAdminClient() {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const serviceRoleKey = Deno.env.get('APP_SUPABASE_SERVICE_ROLE_KEY');
 
   if (!supabaseUrl || !serviceRoleKey) {
-    return '';
+    throw new Error('Missing Supabase admin configuration');
   }
 
-  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+  return createClient(supabaseUrl, serviceRoleKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
     },
   });
+}
 
+async function fetchLastName(email: string) {
+  const adminClient = getAdminClient();
   const { data, error } = await adminClient
     .from('users')
     .select('last_name')
@@ -73,14 +52,40 @@ async function fetchLastName(email: string) {
     .maybeSingle();
 
   if (error) {
-    console.warn('Failed to fetch last name for password reset email:', error);
+    console.warn('Failed to fetch last name for account email:', error);
     return '';
   }
 
   return String(data?.last_name ?? '').trim();
 }
 
-function buildEmail(email: string, lastName: string, resetLink: string, type: EmailType) {
+async function generateActionLink(email: string, type: EmailType) {
+  const adminClient = getAdminClient();
+  const redirectTo = `${getAppUrl()}/reset-password`;
+  const authType = 'recovery';
+
+  const { data, error } = await adminClient.auth.admin.generateLink({
+    type: authType,
+    email,
+    options: {
+      redirectTo,
+    },
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  const actionLink = data?.properties?.action_link;
+
+  if (!actionLink) {
+    throw new Error('Supabase did not return an action link');
+  }
+
+  return actionLink;
+}
+
+function buildEmail(email: string, lastName: string, actionLink: string, type: EmailType) {
   const greeting = buildGreeting(lastName);
 
   if (type === 'admin-created-account') {
@@ -95,7 +100,7 @@ function buildEmail(email: string, lastName: string, resetLink: string, type: Em
           <p style="margin: 0 0 16px;">Use the button below to set your password and finish getting started.</p>
           <p style="margin: 28px 0;">
             <a
-              href="${resetLink}"
+              href="${actionLink}"
               style="display: inline-block; background: #0f4fd6; color: #ffffff; text-decoration: none; padding: 12px 20px; border-radius: 10px; font-weight: 700;"
             >Set Password</a>
           </p>
@@ -118,7 +123,7 @@ function buildEmail(email: string, lastName: string, resetLink: string, type: Em
         <p style="margin: 0 0 16px;">Use the button below to choose a new password.</p>
         <p style="margin: 28px 0;">
           <a
-            href="${resetLink}"
+            href="${actionLink}"
             style="display: inline-block; background: #0f4fd6; color: #ffffff; text-decoration: none; padding: 12px 20px; border-radius: 10px; font-weight: 700;"
           >Reset Password</a>
         </p>
@@ -174,13 +179,9 @@ Deno.serve(async (request) => {
   }
 
   try {
-    const firebaseAuth = getFirebaseAdminAuth();
-    const resetLink = await firebaseAuth.generatePasswordResetLink(email, {
-      url: `${getAppUrl()}/reset-password`,
-      handleCodeInApp: false,
-    });
+    const actionLink = await generateActionLink(email, emailType);
     const lastName = await fetchLastName(email);
-    const outboundEmail = buildEmail(email, lastName, resetLink, emailType);
+    const outboundEmail = buildEmail(email, lastName, actionLink, emailType);
 
     const resendResponse = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -208,7 +209,7 @@ Deno.serve(async (request) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
-    if (message.includes('user-not-found')) {
+    if (message.includes('User not found')) {
       return new Response(JSON.stringify({ ok: true }), {
         status: 200,
         headers: corsHeaders,

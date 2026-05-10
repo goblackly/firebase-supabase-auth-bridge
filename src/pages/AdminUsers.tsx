@@ -1,10 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { initializeApp, deleteApp } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
-import { db, handleFirestoreError, OperationType, firebaseAppConfig } from '../firebase';
 import Layout from '../components/Layout';
-import { syncUserProfileToSupabase } from '../services/supabaseBridge';
+import { supabase } from '../supabase';
+import { syncUserProfileToSupabase, updateUserProfileInSupabase } from '../services/supabaseBridge';
 import { fetchAllUsers } from '../services/supabaseReads';
 import { notificationService } from '../services/notificationService';
 import {
@@ -69,7 +66,6 @@ export default function AdminUsers() {
     } catch (snapshotError: any) {
       console.error('AdminUsers fetchAllUsers error:', snapshotError);
       setError('Failed to load members. Please verify admin permissions.');
-      handleFirestoreError(snapshotError, OperationType.LIST, 'users');
     } finally {
       setLoading(false);
     }
@@ -86,12 +82,8 @@ export default function AdminUsers() {
     }
 
     try {
-      await updateDoc(doc(db, 'users', uid), {
-        role: newRole
-      });
-
-      await syncUserProfileToSupabase({
-        uid,
+      await updateUserProfileInSupabase(uid, {
+        auth_user_id: targetUser.auth_user_id,
         email: targetUser.email,
         first_name: targetUser.first_name,
         last_name: targetUser.last_name,
@@ -114,29 +106,31 @@ export default function AdminUsers() {
     setAddError(null);
 
     try {
-      const secondaryApp = initializeApp(firebaseAppConfig, 'SecondaryApp');
-      const secondaryAuth = getAuth(secondaryApp);
-
-      const userCredential = await createUserWithEmailAndPassword(
-        secondaryAuth,
-        addFormData.email,
-        addFormData.password
-      );
-
-      const newUser = userCredential.user;
-
-      await setDoc(doc(db, 'users', newUser.uid), {
-        first_name: addFormData.firstName,
-        last_name: addFormData.lastName,
-        email: addFormData.email,
-        phone: addFormData.phone,
-        role: addFormData.role,
-        created_at: serverTimestamp(),
+      const { data, error } = await supabase.functions.invoke('admin-create-user', {
+        body: {
+          email: addFormData.email.trim(),
+          password: addFormData.password.trim() || undefined,
+          firstName: addFormData.firstName,
+          lastName: addFormData.lastName,
+          phone: addFormData.phone,
+          role: addFormData.role,
+        },
       });
 
+      if (error) {
+        throw error;
+      }
+
+      const newUserId = data?.user?.id;
+
+      if (!newUserId) {
+        throw new Error('The new member account was created without a Supabase auth ID.');
+      }
+
       await syncUserProfileToSupabase({
-        uid: newUser.uid,
-        email: addFormData.email,
+        uid: newUserId,
+        auth_user_id: newUserId,
+        email: addFormData.email.trim(),
         first_name: addFormData.firstName,
         last_name: addFormData.lastName,
         phone: addFormData.phone,
@@ -146,8 +140,6 @@ export default function AdminUsers() {
       void notificationService.notifyMemberAdminCreatedAccount({
         email: addFormData.email,
       });
-
-      await deleteApp(secondaryApp);
 
       setIsAddModalOpen(false);
       setAddFormData({
@@ -190,15 +182,8 @@ export default function AdminUsers() {
     setEditSuccess(null);
 
     try {
-      await updateDoc(doc(db, 'users', editingUser.uid), {
-        first_name: editFormData.firstName,
-        last_name: editFormData.lastName,
-        phone: editFormData.phone,
-        role: editFormData.role
-      });
-
-      await syncUserProfileToSupabase({
-        uid: editingUser.uid,
+      await updateUserProfileInSupabase(editingUser.uid, {
+        auth_user_id: editingUser.auth_user_id,
         email: editingUser.email,
         first_name: editFormData.firstName,
         last_name: editFormData.lastName,
@@ -472,14 +457,13 @@ export default function AdminUsers() {
                   </div>
 
                   <div>
-                    <label className="label-text">Initial Password</label>
+                    <label className="label-text">Temporary Password (Optional)</label>
                     <input
-                      required
                       type="password"
                       value={addFormData.password}
                       onChange={(e) => setAddFormData({ ...addFormData, password: e.target.value })}
                       className="input-field w-full px-4"
-                      placeholder="••••••••"
+                      placeholder="Leave blank to auto-generate"
                     />
                   </div>
 

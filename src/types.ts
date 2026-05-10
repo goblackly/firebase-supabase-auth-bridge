@@ -4,6 +4,7 @@ export type BlackOwnedStatus = 'yes' | 'no';
 
 export interface UserProfile {
   uid: string;
+  auth_user_id?: string;
   first_name: string;
   last_name: string;
   email: string;
@@ -12,7 +13,7 @@ export interface UserProfile {
   chapter_role?: string;
   crossing_year?: string;
   photo_url?: string;
-  created_at: any; // Firestore Timestamp
+  created_at: any;
 }
 
 export interface Submission {
