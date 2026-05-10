@@ -98,6 +98,26 @@ export async function syncSubmissionToSupabase(submission: SupabaseSubmissionPay
   }
 }
 
+export async function attachFirebaseDocIdToSubmission(
+  firebaseUid: string,
+  receiptFileUrl: string,
+  firebaseDocId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('submissions')
+    .update({
+      firebase_doc_id: firebaseDocId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('firebase_uid', firebaseUid)
+    .eq('receipt_file_url', receiptFileUrl)
+    .is('firebase_doc_id', null);
+
+  if (error) {
+    throw error;
+  }
+}
+
 export async function updateSubmissionReviewInSupabase(
   submissionId: string,
   status: SubmissionStatus,

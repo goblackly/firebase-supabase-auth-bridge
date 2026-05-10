@@ -88,8 +88,12 @@ service cloud.firestore {
       return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
     }
 
-    function isValidUrl(url) {
-      return url is string && (url.matches("^https://.*") || url.matches("^http://.*"));
+    function isValidReceiptUrl(url) {
+      return url is string && (
+        url.matches("^https://.*") ||
+        url.matches("^http://.*") ||
+        url.matches("^supabase://receipts/.*")
+      );
     }
 
     function hasOnlyAllowedFields(data, fields) {
@@ -130,7 +134,7 @@ service cloud.firestore {
         data.business_name is string && data.business_name.size() > 0 && data.business_name.size() < 200 &&
         data.amount_spent is number && data.amount_spent > 0 &&
         data.sigma_members_attended is number && data.sigma_members_attended >= 1 &&
-        (data.receipt_file_url == "" || isValidUrl(data.receipt_file_url)) &&
+        (data.receipt_file_url == "" || isValidReceiptUrl(data.receipt_file_url)) &&
         data.category is string &&
         data.black_owned_status in ['yes', 'no'] &&
         data.status in ['pending', 'approved', 'rejected'] &&

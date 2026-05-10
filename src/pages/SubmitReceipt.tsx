@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { notificationService } from '../services/notificationService';
-import { syncSubmissionToSupabase, syncUserProfileToSupabase } from '../services/supabaseBridge';
+import { attachFirebaseDocIdToSubmission, syncSubmissionToSupabase, syncUserProfileToSupabase } from '../services/supabaseBridge';
 import { uploadReceiptToSupabase } from '../services/receiptStorage';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
@@ -85,7 +85,6 @@ export default function SubmitReceipt() {
       fileUrl = await Promise.race([uploadPromise, timeoutPromise]) as string;
       console.log('Storage upload successful:', fileUrl);
 
-      console.log('Saving to Firestore...');
       const submissionData = {
         user_id: user.uid,
         user_name: `${profile?.first_name} ${profile?.last_name}`.trim(),
@@ -106,9 +105,6 @@ export default function SubmitReceipt() {
         updated_at: serverTimestamp(),
       };
 
-      const submissionRef = await addDoc(collection(db, 'submissions'), submissionData);
-      console.log('Firestore save successful');
-
       if (profile) {
         try {
           await syncUserProfileToSupabase({
@@ -124,7 +120,6 @@ export default function SubmitReceipt() {
           });
 
           await syncSubmissionToSupabase({
-            firebase_doc_id: submissionRef.id,
             firebase_uid: user.uid,
             user_name: submissionData.user_name,
             receipt_date: submissionData.receipt_date,
@@ -142,10 +137,56 @@ export default function SubmitReceipt() {
             status: 'pending',
           });
         } catch (syncError) {
-          console.warn('Supabase submission sync deferred:', syncError);
+          throw syncError;
         }
+      } else if (user.email) {
+        await syncUserProfileToSupabase({
+          uid: user.uid,
+          email: user.email,
+          first_name: profile?.first_name ?? '',
+          last_name: profile?.last_name ?? '',
+          phone: profile?.phone,
+          role: profile?.role ?? (user.email === 'info@goblackly.com' ? 'admin' : 'member'),
+          chapter_role: profile?.chapter_role,
+          crossing_year: profile?.crossing_year,
+          photo_url: profile?.photo_url,
+        });
+
+        await syncSubmissionToSupabase({
+          firebase_uid: user.uid,
+          user_name: submissionData.user_name,
+          receipt_date: submissionData.receipt_date,
+          business_name: submissionData.business_name,
+          amount_spent: submissionData.amount_spent,
+          sigma_members_attended: submissionData.sigma_members_attended,
+          receipt_file_url: submissionData.receipt_file_url,
+          category: submissionData.category,
+          black_owned_status: submissionData.black_owned_status as 'yes' | 'no',
+          city: submissionData.city,
+          state: submissionData.state,
+          business_address: submissionData.business_address,
+          zip_code: submissionData.zip_code,
+          notes: submissionData.notes,
+          status: 'pending',
+        });
       } else {
-        console.warn('Supabase submission sync skipped because the Firebase profile is not loaded yet.');
+        throw new Error('Cannot sync submission to Supabase without a loaded user profile or email.');
+      }
+
+      try {
+        console.log('Saving to Firestore...');
+        const submissionRef = await addDoc(collection(db, 'submissions'), submissionData);
+        console.log('Firestore save successful');
+
+        if (submissionRef.id) {
+          try {
+            await attachFirebaseDocIdToSubmission(user.uid, submissionData.receipt_file_url, submissionRef.id);
+          } catch (syncError) {
+            console.warn('Supabase submission update with firebase_doc_id deferred:', syncError);
+          }
+        }
+      } catch (firestoreError) {
+        console.warn('Firestore submission mirror deferred:', firestoreError);
       }
 
       await notificationService.notifyAdminNewSubmission({
