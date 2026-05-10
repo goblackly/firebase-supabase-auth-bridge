@@ -7,6 +7,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
 import SubmitReceipt from './pages/SubmitReceipt';
 import Leaderboard from './pages/Leaderboard';
@@ -44,6 +45,7 @@ export default function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
 
             {/* Member Routes */}
             <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />

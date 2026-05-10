@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { sendPasswordResetEmail } from 'firebase/auth';
-import { auth } from '../firebase';
-import { Mail, AlertCircle, CheckCircle2, ArrowLeft, Loader2 } from 'lucide-react';
+import { notificationService } from '../services/notificationService';
+import { AlertCircle, CheckCircle2, ArrowLeft, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export default function ForgotPassword() {
@@ -18,10 +17,10 @@ export default function ForgotPassword() {
     setLoading(true);
 
     try {
-      await sendPasswordResetEmail(auth, email);
-      setMessage('Check your inbox for further instructions.');
+      await notificationService.requestPasswordResetEmail(email.trim());
+      setMessage('If an account exists for that email, a password reset link has been sent.');
     } catch (err: any) {
-      setError(err.message || 'Failed to reset password. Please try again.');
+      setError(err.message || 'Failed to send the reset email. Please try again.');
     } finally {
       setLoading(false);
     }

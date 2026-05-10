@@ -12,11 +12,12 @@ import {
 } from 'lucide-react';
 import { Submission } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { fetchAllSubmissions } from '../services/supabaseReads';
+import { fetchAllSubmissions, fetchUserContactByFirebaseUid } from '../services/supabaseReads';
 import {
   deleteSubmissionFromSupabase,
   updateSubmissionReviewInSupabase,
 } from '../services/supabaseBridge';
+import { notificationService } from '../services/notificationService';
 
 export default function AdminSubmissions() {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
@@ -79,12 +80,14 @@ export default function AdminSubmissions() {
 
   const handleStatusUpdate = async (submission: Submission, status: 'approved' | 'rejected') => {
     const firebaseDocId = submission.firebase_doc_id;
+    const nextAdminNotes = adminNotes.trim();
+    const nextUpdatedAt = new Date().toISOString();
 
     try {
       await updateSubmissionReviewInSupabase(
         submission.id,
         status,
-        adminNotes,
+        nextAdminNotes,
         submission.duplicate_flag ?? false
       );
 
@@ -92,7 +95,7 @@ export default function AdminSubmissions() {
         try {
           await updateDoc(doc(db, 'submissions', firebaseDocId), {
             status,
-            admin_notes: adminNotes,
+            admin_notes: nextAdminNotes,
             updated_at: serverTimestamp(),
           });
         } catch (firebaseError) {
@@ -103,13 +106,41 @@ export default function AdminSubmissions() {
       setSubmissions((current) =>
         current.map((item) =>
           item.id === submission.id
-            ? { ...item, status, admin_notes: adminNotes, updated_at: new Date().toISOString() }
+            ? { ...item, status, admin_notes: nextAdminNotes, updated_at: nextUpdatedAt }
             : item
         )
       );
       setSelectedSubmission(null);
       setAdminNotes('');
       setError(null);
+
+      void (async () => {
+        const contact = await fetchUserContactByFirebaseUid(submission.user_id);
+
+        if (!contact?.email) {
+          return;
+        }
+
+        if (status === 'approved') {
+          await notificationService.notifyMemberSubmissionApproved({
+            email: contact.email,
+            lastName: contact.lastName,
+            businessName: submission.business_name,
+            amount: submission.amount_spent,
+          });
+          return;
+        }
+
+        await notificationService.notifyMemberSubmissionRejected({
+          email: contact.email,
+          lastName: contact.lastName,
+          businessName: submission.business_name,
+          amount: submission.amount_spent,
+          adminNote: nextAdminNotes,
+        });
+      })().catch((notificationError) => {
+        console.error('Failed to send review result email:', notificationError);
+      });
     } catch (err) {
       console.error('Error updating submission review state:', err);
       setError('Failed to update the submission review state in Supabase.');

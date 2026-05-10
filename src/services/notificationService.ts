@@ -1,118 +1,163 @@
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
 import { supabase } from '../supabase';
 
-type AdminNotificationPayload =
+type AccountEmailPayload =
   | {
-      type: 'new-user';
+      type: 'member-welcome';
+      payload: {
+        email: string;
+        lastName: string;
+      };
+    }
+  | {
+      type: 'admin-new-user';
       payload: {
         firstName: string;
         lastName: string;
         email: string;
       };
-    }
+    };
+
+type AppNotificationPayload =
   | {
-      type: 'new-submission';
+      type: 'admin-new-submission';
       payload: {
-        userName: string;
+        memberName: string;
         businessName: string;
         amount: number;
       };
+    }
+  | {
+      type: 'member-submission-received';
+      payload: {
+        email: string;
+        lastName: string;
+        businessName: string;
+        amount: number;
+      };
+    }
+  | {
+      type: 'member-submission-approved';
+      payload: {
+        email: string;
+        lastName: string;
+        businessName: string;
+        amount: number;
+      };
+    }
+  | {
+      type: 'member-submission-rejected';
+      payload: {
+        email: string;
+        lastName: string;
+        businessName: string;
+        amount: number;
+        adminNote?: string;
+      };
     };
 
-async function sendAdminNotification(body: AdminNotificationPayload) {
-  const { error } = await supabase.functions.invoke('send-admin-notification', {
-    body,
-  });
-
+async function invokeFunction<T>(name: string, body: T) {
+  const { error } = await supabase.functions.invoke(name, { body });
   if (error) {
     throw error;
   }
 }
 
-async function fallbackToFirebaseMail(body: AdminNotificationPayload) {
-  const mailDocument = body.type === 'new-user'
-    ? {
-        to: 'info@goblackly.com',
-        message: {
-          subject: 'New User Registration - Sigma Spend Initiative',
-          html: `
-            <div style="font-family: sans-serif; padding: 20px; color: #333;">
-              <h2 style="color: #002366;">New User Registration</h2>
-              <p>A new member has joined the Sigma Spend Initiative:</p>
-              <ul style="list-style: none; padding: 0;">
-                <li><strong>Name:</strong> ${body.payload.firstName} ${body.payload.lastName}</li>
-                <li><strong>Email:</strong> ${body.payload.email}</li>
-              </ul>
-              <p>You can manage users in the Admin Dashboard.</p>
-              <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-              <p style="font-size: 12px; color: #666;">Bigger & Better Business - Kappa Upsilon Sigma Chapter</p>
-            </div>
-          `,
-        },
-        timestamp: serverTimestamp(),
-      }
-    : {
-        to: 'info@goblackly.com',
-        message: {
-          subject: 'New Receipt Submission - Action Required',
-          html: `
-            <div style="font-family: sans-serif; padding: 20px; color: #333;">
-              <h2 style="color: #002366;">New Receipt for Review</h2>
-              <p>A new receipt has been submitted and is pending approval:</p>
-              <ul style="list-style: none; padding: 0;">
-                <li><strong>Member:</strong> ${body.payload.userName}</li>
-                <li><strong>Business:</strong> ${body.payload.businessName}</li>
-                <li><strong>Amount:</strong> $${body.payload.amount.toLocaleString()}</li>
-              </ul>
-              <p>Please log in to the Admin Dashboard to approve or reject this submission.</p>
-              <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-              <p style="font-size: 12px; color: #666;">Bigger & Better Business - Kappa Upsilon Sigma Chapter</p>
-            </div>
-          `,
-        },
-        timestamp: serverTimestamp(),
-      };
+async function sendAccountEmail(body: AccountEmailPayload) {
+  await invokeFunction('send-account-email', body);
+}
 
-  await addDoc(collection(db, 'mail'), mailDocument);
+async function sendAppNotification(body: AppNotificationPayload) {
+  await invokeFunction('send-admin-notification', body);
+}
+
+function logNotificationError(context: string, error: unknown) {
+  console.error(`Failed to send ${context}:`, error);
 }
 
 export const notificationService = {
   async notifyAdminNewUser(userData: { firstName: string; lastName: string; email: string }) {
-    const body: AdminNotificationPayload = {
-      type: 'new-user',
-      payload: userData,
-    };
-
     try {
-      await sendAdminNotification(body);
+      await sendAccountEmail({
+        type: 'admin-new-user',
+        payload: userData,
+      });
     } catch (error) {
-      console.error('Supabase admin notification failed (new user), falling back to Firebase mail:', error);
-
-      try {
-        await fallbackToFirebaseMail(body);
-      } catch (fallbackError) {
-        console.error('Failed to send admin notification (new user):', fallbackError);
-      }
+      logNotificationError('admin new-user email', error);
     }
   },
 
-  async notifyAdminNewSubmission(submissionData: { userName: string; businessName: string; amount: number }) {
-    const body: AdminNotificationPayload = {
-      type: 'new-submission',
-      payload: submissionData,
-    };
-
+  async notifyMemberWelcome(memberData: { email: string; lastName: string }) {
     try {
-      await sendAdminNotification(body);
+      await sendAccountEmail({
+        type: 'member-welcome',
+        payload: memberData,
+      });
     } catch (error) {
-      console.error('Supabase admin notification failed (new submission), falling back to Firebase mail:', error);
-
-      try {
-        await fallbackToFirebaseMail(body);
-      } catch (fallbackError) {
-        console.error('Failed to send admin notification (new submission):', fallbackError);
-      }
+      logNotificationError('member welcome email', error);
     }
-  }
+  },
+
+  async requestPasswordResetEmail(email: string) {
+    await invokeFunction('send-password-reset-email', { email });
+  },
+
+  async notifyAdminNewSubmission(submissionData: { memberName: string; businessName: string; amount: number }) {
+    try {
+      await sendAppNotification({
+        type: 'admin-new-submission',
+        payload: submissionData,
+      });
+    } catch (error) {
+      logNotificationError('admin new-submission email', error);
+    }
+  },
+
+  async notifyMemberSubmissionReceived(submissionData: {
+    email: string;
+    lastName: string;
+    businessName: string;
+    amount: number;
+  }) {
+    try {
+      await sendAppNotification({
+        type: 'member-submission-received',
+        payload: submissionData,
+      });
+    } catch (error) {
+      logNotificationError('member submission-received email', error);
+    }
+  },
+
+  async notifyMemberSubmissionApproved(submissionData: {
+    email: string;
+    lastName: string;
+    businessName: string;
+    amount: number;
+  }) {
+    try {
+      await sendAppNotification({
+        type: 'member-submission-approved',
+        payload: submissionData,
+      });
+    } catch (error) {
+      logNotificationError('member submission-approved email', error);
+    }
+  },
+
+  async notifyMemberSubmissionRejected(submissionData: {
+    email: string;
+    lastName: string;
+    businessName: string;
+    amount: number;
+    adminNote?: string;
+  }) {
+    try {
+      await sendAppNotification({
+        type: 'member-submission-rejected',
+        payload: submissionData,
+      });
+    } catch (error) {
+      logNotificationError('member submission-rejected email', error);
+    }
+  },
 };

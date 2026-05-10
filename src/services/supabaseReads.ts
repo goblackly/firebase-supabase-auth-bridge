@@ -146,6 +146,32 @@ export async function fetchAllUsers(): Promise<UserProfile[]> {
   return (data ?? []).map((row) => mapUser(row as UserRow));
 }
 
+export async function fetchUserContactByFirebaseUid(firebaseUid: string): Promise<{
+  email: string;
+  firstName: string;
+  lastName: string;
+} | null> {
+  const { data, error } = await supabase
+    .from('users')
+    .select('email, first_name, last_name')
+    .eq('firebase_uid', firebaseUid)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return {
+    email: String(data.email ?? '').trim(),
+    firstName: String(data.first_name ?? '').trim(),
+    lastName: String(data.last_name ?? '').trim(),
+  };
+}
+
 export async function fetchYearlyGoal(year: number): Promise<YearlyGoal | null> {
   const { data, error } = await supabase
     .from('yearly_goals')

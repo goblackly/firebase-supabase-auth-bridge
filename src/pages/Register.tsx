@@ -59,11 +59,17 @@ export default function Register() {
         console.warn('Supabase user sync deferred after registration:', syncError);
       }
 
-      await notificationService.notifyAdminNewUser({
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        email: formData.email
-      });
+      void Promise.allSettled([
+        notificationService.notifyAdminNewUser({
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+        }),
+        notificationService.notifyMemberWelcome({
+          email: formData.email,
+          lastName: formData.lastName,
+        }),
+      ]);
 
       navigate('/');
     } catch (err: any) {

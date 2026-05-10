@@ -189,11 +189,26 @@ export default function SubmitReceipt() {
         console.warn('Firestore submission mirror deferred:', firestoreError);
       }
 
-      await notificationService.notifyAdminNewSubmission({
-        userName: `${profile?.first_name} ${profile?.last_name}`,
-        businessName: formData.businessName,
-        amount: parseFloat(formData.amountSpent)
-      });
+      const memberName = `${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim() || 'Black Spend Member';
+      const memberEmail = profile?.email ?? user.email ?? '';
+      const memberLastName = profile?.last_name ?? '';
+      const amount = parseFloat(formData.amountSpent);
+
+      void Promise.allSettled([
+        notificationService.notifyAdminNewSubmission({
+          memberName,
+          businessName: formData.businessName,
+          amount,
+        }),
+        memberEmail
+          ? notificationService.notifyMemberSubmissionReceived({
+              email: memberEmail,
+              lastName: memberLastName,
+              businessName: formData.businessName,
+              amount,
+            })
+          : Promise.resolve(),
+      ]);
 
       setSuccess(true);
       setTimeout(() => navigate('/'), 2000);

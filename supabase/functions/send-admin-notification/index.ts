@@ -5,25 +5,51 @@ const corsHeaders = {
   'Content-Type': 'application/json',
 };
 
-type NewUserPayload = {
-  type: 'new-user';
+type AdminNewSubmissionPayload = {
+  type: 'admin-new-submission';
   payload: {
-    firstName: string;
-    lastName: string;
-    email: string;
-  };
-};
-
-type NewSubmissionPayload = {
-  type: 'new-submission';
-  payload: {
-    userName: string;
+    memberName: string;
     businessName: string;
     amount: number;
   };
 };
 
-type NotificationPayload = NewUserPayload | NewSubmissionPayload;
+type MemberSubmissionReceivedPayload = {
+  type: 'member-submission-received';
+  payload: {
+    email: string;
+    lastName: string;
+    businessName: string;
+    amount: number;
+  };
+};
+
+type MemberSubmissionApprovedPayload = {
+  type: 'member-submission-approved';
+  payload: {
+    email: string;
+    lastName: string;
+    businessName: string;
+    amount: number;
+  };
+};
+
+type MemberSubmissionRejectedPayload = {
+  type: 'member-submission-rejected';
+  payload: {
+    email: string;
+    lastName: string;
+    businessName: string;
+    amount: number;
+    adminNote?: string;
+  };
+};
+
+type NotificationPayload =
+  | AdminNewSubmissionPayload
+  | MemberSubmissionReceivedPayload
+  | MemberSubmissionApprovedPayload
+  | MemberSubmissionRejectedPayload;
 
 function escapeHtml(value: string) {
   return value
@@ -34,67 +60,168 @@ function escapeHtml(value: string) {
     .replaceAll("'", '&#39;');
 }
 
-function buildEmail(payload: NotificationPayload) {
-  if (payload.type === 'new-user') {
-    const firstName = escapeHtml(payload.payload.firstName.trim());
-    const lastName = escapeHtml(payload.payload.lastName.trim());
-    const email = escapeHtml(payload.payload.email.trim());
+function getAppUrl() {
+  return (Deno.env.get('APP_URL') ?? 'https://blackspend.pbskus.net').replace(/\/+$/, '');
+}
+
+function buildGreeting(lastName?: string) {
+  const trimmed = (lastName ?? '').trim();
+  return trimmed ? `Hi Bro. ${escapeHtml(trimmed)},` : 'Hi Bro.,';
+}
+
+function buildButton(label: string, href: string) {
+  return `
+    <p style="margin: 28px 0;">
+      <a
+        href="${href}"
+        style="display: inline-block; background: #0f4fd6; color: #ffffff; text-decoration: none; padding: 12px 20px; border-radius: 10px; font-weight: 700;"
+      >${label}</a>
+    </p>
+  `;
+}
+
+function wrapEmail(params: {
+  title: string;
+  intro?: string;
+  greeting?: string;
+  details?: string;
+  body: string[];
+  ctaLabel: string;
+  ctaUrl: string;
+}) {
+  const bodyHtml = params.body.map((line) => `<p style="margin: 0 0 16px;">${line}</p>`).join('');
+
+  return `
+    <div style="font-family: Arial, sans-serif; padding: 24px; color: #14213d; line-height: 1.6;">
+      <h2 style="color: #0f4fd6; margin: 0 0 20px;">${params.title}</h2>
+      ${params.greeting ? `<p style="margin: 0 0 16px;">${params.greeting}</p>` : ''}
+      ${params.intro ? `<p style="margin: 0 0 16px;">${params.intro}</p>` : ''}
+      ${params.details ? `<div style="margin: 0 0 16px;">${params.details}</div>` : ''}
+      ${bodyHtml}
+      ${buildButton(params.ctaLabel, params.ctaUrl)}
+      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+      <p style="font-size: 12px; color: #667085; margin: 0;">Black Spend Initiative<br />Kappa Upsilon Sigma Chapter</p>
+    </div>
+  `;
+}
+
+function formatAmount(amount: number) {
+  return `$${Number(amount || 0).toLocaleString()}`;
+}
+
+function buildEmail(payload: NotificationPayload, adminEmail: string) {
+  const appUrl = getAppUrl();
+
+  if (payload.type === 'admin-new-submission') {
+    const memberName = escapeHtml(payload.payload.memberName.trim());
+    const businessName = escapeHtml(payload.payload.businessName.trim());
+    const amount = formatAmount(payload.payload.amount);
 
     return {
-      subject: 'New User Registration - Sigma Spend Initiative',
-      html: `
-        <div style="font-family: sans-serif; padding: 20px; color: #333;">
-          <h2 style="color: #002366;">New User Registration</h2>
-          <p>A new member has joined the Sigma Spend Initiative:</p>
-          <ul style="list-style: none; padding: 0;">
-            <li><strong>Name:</strong> ${firstName} ${lastName}</li>
-            <li><strong>Email:</strong> ${email}</li>
+      to: adminEmail,
+      subject: 'New receipt submission awaiting review',
+      html: wrapEmail({
+        title: 'New receipt submission awaiting review',
+        intro: 'A new receipt has been submitted and is ready for review.',
+        details: `
+          <ul style="list-style: none; padding: 0; margin: 0 0 16px;">
+            <li><strong>Member:</strong> ${memberName}</li>
+            <li><strong>Business:</strong> ${businessName}</li>
+            <li><strong>Amount:</strong> ${amount}</li>
           </ul>
-          <p>You can manage users in the Admin Dashboard.</p>
-          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-          <p style="font-size: 12px; color: #666;">Bigger & Better Business - Kappa Upsilon Sigma Chapter</p>
-        </div>
-      `,
+        `,
+        body: ['Please review it in the admin dashboard.'],
+        ctaLabel: 'Review Submission',
+        ctaUrl: `${appUrl}/admin/submissions`,
+      }),
     };
   }
 
-  const userName = escapeHtml(payload.payload.userName.trim());
+  const recipientEmail = escapeHtml(payload.payload.email.trim());
   const businessName = escapeHtml(payload.payload.businessName.trim());
-  const amount = Number(payload.payload.amount || 0);
+  const amount = formatAmount(payload.payload.amount);
+  const greeting = buildGreeting(payload.payload.lastName);
+
+  if (payload.type === 'member-submission-received') {
+    return {
+      to: recipientEmail,
+      subject: 'We received your receipt submission',
+      html: wrapEmail({
+        title: 'We received your receipt submission',
+        greeting,
+        body: [
+          `Your receipt for <strong>${businessName}</strong> in the amount of <strong>${amount}</strong> has been submitted successfully and is now pending review.`,
+          'We’ll email you again once a decision has been made.',
+        ],
+        ctaLabel: 'View My Submissions',
+        ctaUrl: `${appUrl}/my-submissions`,
+      }),
+    };
+  }
+
+  if (payload.type === 'member-submission-approved') {
+    return {
+      to: recipientEmail,
+      subject: 'Your receipt was approved',
+      html: wrapEmail({
+        title: 'Your receipt was approved',
+        greeting,
+        body: [
+          `Your receipt for <strong>${businessName}</strong> in the amount of <strong>${amount}</strong> has been approved.`,
+          'Thank you for contributing to the chapter’s impact.',
+        ],
+        ctaLabel: 'View My Submissions',
+        ctaUrl: `${appUrl}/my-submissions`,
+      }),
+    };
+  }
+
+  const adminNote = (payload.payload.adminNote ?? '').trim();
+  const rejectionBody = [
+    `Your receipt for <strong>${businessName}</strong> in the amount of <strong>${amount}</strong> was not approved.`,
+  ];
+
+  if (adminNote) {
+    rejectionBody.push(`<strong>Reason:</strong> ${escapeHtml(adminNote)}`);
+  }
+
+  rejectionBody.push('Please review your submission and submit a new receipt if needed.');
 
   return {
-    subject: 'New Receipt Submission - Action Required',
-    html: `
-      <div style="font-family: sans-serif; padding: 20px; color: #333;">
-        <h2 style="color: #002366;">New Receipt for Review</h2>
-        <p>A new receipt has been submitted and is pending approval:</p>
-        <ul style="list-style: none; padding: 0;">
-          <li><strong>Member:</strong> ${userName}</li>
-          <li><strong>Business:</strong> ${businessName}</li>
-          <li><strong>Amount:</strong> $${amount.toLocaleString()}</li>
-        </ul>
-        <p>Please log in to the Admin Dashboard to approve or reject this submission.</p>
-        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-        <p style="font-size: 12px; color: #666;">Bigger & Better Business - Kappa Upsilon Sigma Chapter</p>
-      </div>
-    `,
+    to: recipientEmail,
+    subject: 'Your receipt needs attention',
+    html: wrapEmail({
+      title: 'Your receipt needs attention',
+      greeting,
+      body: rejectionBody,
+      ctaLabel: 'Review My Submission',
+      ctaUrl: `${appUrl}/my-submissions`,
+    }),
   };
 }
 
 function validatePayload(payload: NotificationPayload) {
-  if (payload.type === 'new-user') {
-    return Boolean(
-      payload.payload.firstName?.trim() &&
-      payload.payload.lastName?.trim() &&
-      payload.payload.email?.trim()
-    );
+  switch (payload.type) {
+    case 'admin-new-submission':
+      return Boolean(
+        payload.payload.memberName?.trim() &&
+        payload.payload.businessName?.trim() &&
+        Number.isFinite(Number(payload.payload.amount))
+      );
+    case 'member-submission-received':
+    case 'member-submission-approved':
+      return Boolean(
+        payload.payload.email?.trim() &&
+        payload.payload.businessName?.trim() &&
+        Number.isFinite(Number(payload.payload.amount))
+      );
+    case 'member-submission-rejected':
+      return Boolean(
+        payload.payload.email?.trim() &&
+        payload.payload.businessName?.trim() &&
+        Number.isFinite(Number(payload.payload.amount))
+      );
   }
-
-  return Boolean(
-    payload.payload.userName?.trim() &&
-    payload.payload.businessName?.trim() &&
-    Number.isFinite(Number(payload.payload.amount))
-  );
 }
 
 Deno.serve(async (request) => {
@@ -138,7 +265,7 @@ Deno.serve(async (request) => {
     });
   }
 
-  const email = buildEmail(payload);
+  const email = buildEmail(payload, adminEmail);
 
   const resendResponse = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -148,7 +275,7 @@ Deno.serve(async (request) => {
     },
     body: JSON.stringify({
       from: resendFromEmail,
-      to: adminEmail,
+      to: email.to,
       subject: email.subject,
       html: email.html,
     }),
