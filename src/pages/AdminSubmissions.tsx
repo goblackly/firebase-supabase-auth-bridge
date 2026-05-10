@@ -80,24 +80,25 @@ export default function AdminSubmissions() {
   const handleStatusUpdate = async (submission: Submission, status: 'approved' | 'rejected') => {
     const firebaseDocId = submission.firebase_doc_id;
 
-    if (!firebaseDocId) {
-      setError('This submission is missing its Firebase document mapping, so admin review cannot be synced safely yet.');
-      return;
-    }
-
     try {
-      await updateDoc(doc(db, 'submissions', firebaseDocId), {
-        status,
-        admin_notes: adminNotes,
-        updated_at: serverTimestamp(),
-      });
-
       await updateSubmissionReviewInSupabase(
         submission.id,
         status,
         adminNotes,
         submission.duplicate_flag ?? false
       );
+
+      if (firebaseDocId) {
+        try {
+          await updateDoc(doc(db, 'submissions', firebaseDocId), {
+            status,
+            admin_notes: adminNotes,
+            updated_at: serverTimestamp(),
+          });
+        } catch (firebaseError) {
+          console.warn('Firebase review mirror failed after Supabase review update:', firebaseError);
+        }
+      }
 
       setSubmissions((current) =>
         current.map((item) =>
@@ -111,21 +112,25 @@ export default function AdminSubmissions() {
       setError(null);
     } catch (err) {
       console.error('Error updating submission review state:', err);
-      setError('Updated Firebase, but failed to fully sync the review action to Supabase.');
+      setError('Failed to update the submission review state in Supabase.');
     }
   };
 
   const handleDelete = async () => {
     if (!selectedSubmission) return;
     const firebaseDocId = selectedSubmission.firebase_doc_id;
-    if (!firebaseDocId) {
-      setError('This submission is missing its Firebase document mapping, so delete cannot be synced safely yet.');
-      return;
-    }
     setIsDeleting(true);
     try {
-      await deleteDoc(doc(db, 'submissions', firebaseDocId));
       await deleteSubmissionFromSupabase(selectedSubmission.id);
+
+      if (firebaseDocId) {
+        try {
+          await deleteDoc(doc(db, 'submissions', firebaseDocId));
+        } catch (firebaseError) {
+          console.warn('Firebase delete mirror failed after Supabase delete:', firebaseError);
+        }
+      }
+
       setSubmissions((current) => current.filter((item) => item.id !== selectedSubmission.id));
       setSelectedSubmission(null);
       setShowDeleteConfirm(false);
@@ -133,7 +138,7 @@ export default function AdminSubmissions() {
       setError(null);
     } catch (err) {
       console.error('Error deleting submission:', err);
-      setError('Deleted or attempted deletion in Firebase, but failed to fully sync the delete to Supabase.');
+      setError('Failed to delete the submission from Supabase.');
     } finally {
       setIsDeleting(false);
     }
