@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { initializeApp, deleteApp } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { db, handleFirestoreError, OperationType, firebaseAppConfig, auth } from '../firebase';
+import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
+import { db, handleFirestoreError, OperationType, firebaseAppConfig } from '../firebase';
 import Layout from '../components/Layout';
 import { syncUserProfileToSupabase } from '../services/supabaseBridge';
 import { fetchAllUsers } from '../services/supabaseReads';
+import { notificationService } from '../services/notificationService';
 import {
   Users,
   Mail,
@@ -223,7 +224,7 @@ export default function AdminUsers() {
     setEditSuccess(null);
 
     try {
-      await sendPasswordResetEmail(auth, editingUser.email);
+      await notificationService.requestPasswordResetEmail(editingUser.email);
       setEditSuccess(`Password reset email sent to ${editingUser.email}`);
     } catch (err: any) {
       console.error('Error resetting password:', err);
