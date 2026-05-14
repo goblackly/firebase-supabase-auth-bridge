@@ -79,7 +79,7 @@ export default function SubmitReceipt() {
     try {
       let fileUrl = '';
       console.log('Starting storage upload...');
-      const uploadPromise = uploadReceiptToSupabase(user.id, receiptFile);
+      const uploadPromise = uploadReceiptToSupabase(profile.uid, receiptFile);
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Storage upload timed out. Please check your connection.')), 20000)
       );
@@ -204,8 +204,13 @@ export default function SubmitReceipt() {
       console.error('Submission error:', err);
       let errorMessage = err.message || 'An error occurred during submission.';
 
-      if (err.message?.toLowerCase().includes('unauthorized') || err.message?.toLowerCase().includes('row-level security')) {
+      const errorName = String(err?.name ?? '').toLowerCase();
+      const errorMessageText = String(err?.message ?? '').toLowerCase();
+
+      if (errorName.includes('storageapierror') || errorMessageText.includes('storage')) {
         errorMessage = 'Permission denied: Unable to upload to receipt storage. Please verify the Supabase storage policies for this user.';
+      } else if (errorMessageText.includes('row-level security') || errorMessageText.includes('permission')) {
+        errorMessage = 'Permission denied: Unable to save this receipt submission. Please contact support if this keeps happening.';
       } else if (err.message?.includes('timed out')) {
         errorMessage = 'Upload timed out. The file might be too large or your connection is slow.';
       }
