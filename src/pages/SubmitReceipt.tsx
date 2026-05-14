@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { notificationService } from '../services/notificationService';
 import { syncSubmissionToSupabase, syncUserProfileToSupabase } from '../services/supabaseBridge';
 import { uploadReceiptToSupabase } from '../services/receiptStorage';
+import { formatFileSize, mapReceiptSubmissionError, prepareReceiptFile } from '../services/receiptUpload';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
 import {
@@ -29,8 +30,10 @@ export default function SubmitReceipt() {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [fileProcessing, setFileProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [uploadNotice, setUploadNotice] = useState('');
 
   const [formData, setFormData] = useState({
     receiptDate: new Date().toISOString().split('T')[0],
@@ -48,16 +51,43 @@ export default function SubmitReceipt() {
 
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewIsImage, setPreviewIsImage] = useState(false);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setReceiptFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreviewUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    e.target.value = '';
+
+    if (!file) {
+      return;
+    }
+
+    setFileProcessing(true);
+    setError('');
+    setUploadNotice('');
+
+    try {
+      const { file: preparedFile, notice } = await prepareReceiptFile(file);
+      setReceiptFile(preparedFile);
+      setUploadNotice(notice ?? '');
+
+      if (preparedFile.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setPreviewIsImage(true);
+          setPreviewUrl(reader.result as string);
+        };
+        reader.readAsDataURL(preparedFile);
+      } else {
+        setPreviewIsImage(false);
+        setPreviewUrl(null);
+      }
+    } catch (err: any) {
+      setReceiptFile(null);
+      setPreviewUrl(null);
+      setPreviewIsImage(false);
+      setError(err?.message || 'We could not prepare that file for upload.');
+    } finally {
+      setFileProcessing(false);
     }
   };
 
@@ -81,7 +111,7 @@ export default function SubmitReceipt() {
       console.log('Starting storage upload...');
       const uploadPromise = uploadReceiptToSupabase(profile.uid, receiptFile);
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Storage upload timed out. Please check your connection.')), 20000)
+        setTimeout(() => reject(new Error('Storage upload timed out. Please check your connection.')), 45000)
       );
 
       fileUrl = await Promise.race([uploadPromise, timeoutPromise]) as string;
@@ -202,20 +232,7 @@ export default function SubmitReceipt() {
       setTimeout(() => navigate('/'), 2000);
     } catch (err: any) {
       console.error('Submission error:', err);
-      let errorMessage = err.message || 'An error occurred during submission.';
-
-      const errorName = String(err?.name ?? '').toLowerCase();
-      const errorMessageText = String(err?.message ?? '').toLowerCase();
-
-      if (errorName.includes('storageapierror') || errorMessageText.includes('storage')) {
-        errorMessage = 'Permission denied: Unable to upload to receipt storage. Please verify the Supabase storage policies for this user.';
-      } else if (errorMessageText.includes('row-level security') || errorMessageText.includes('permission')) {
-        errorMessage = 'Permission denied: Unable to save this receipt submission. Please contact support if this keeps happening.';
-      } else if (err.message?.includes('timed out')) {
-        errorMessage = 'Upload timed out. The file might be too large or your connection is slow.';
-      }
-
-      setError(errorMessage);
+      setError(mapReceiptSubmissionError(err));
     } finally {
       setLoading(false);
     }
@@ -247,6 +264,13 @@ export default function SubmitReceipt() {
             <div className="bg-red-500/10 border border-red-500/50 p-4 rounded-xl flex items-start gap-3 text-red-400 text-sm">
               <AlertCircle className="w-5 h-5 shrink-0" />
               <p>{error}</p>
+            </div>
+          )}
+
+          {uploadNotice && (
+            <div className="bg-amber-500/10 border border-amber-500/40 p-4 rounded-xl flex items-start gap-3 text-amber-300 text-sm">
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              <p>{uploadNotice}</p>
             </div>
           )}
 
@@ -350,12 +374,20 @@ export default function SubmitReceipt() {
                   previewUrl ? 'border-sigma-blue bg-sigma-blue/5' : 'border-white/10 hover:border-white/20'
                 }`}
               >
-                {previewUrl ? (
+                {receiptFile ? (
                   <div className="relative inline-block">
-                    <img src={previewUrl} alt="Receipt Preview" className="max-h-64 rounded-xl shadow-lg" />
+                    {previewIsImage && previewUrl ? (
+                      <img src={previewUrl} alt="Receipt Preview" className="max-h-64 rounded-xl shadow-lg" />
+                    ) : (
+                      <div className="rounded-xl border border-white/10 bg-sigma-dark/60 p-5 text-left min-w-[260px] shadow-lg">
+                        <p className="text-white font-semibold break-all">{receiptFile.name}</p>
+                        <p className="text-slate-400 text-sm mt-2">{formatFileSize(receiptFile.size)}</p>
+                        <p className="text-slate-500 text-xs mt-1">PDF ready to upload</p>
+                      </div>
+                    )}
                     <button
                       type="button"
-                      onClick={() => { setReceiptFile(null); setPreviewUrl(null); }}
+                      onClick={() => { setReceiptFile(null); setPreviewUrl(null); setPreviewIsImage(false); setUploadNotice(''); }}
                       className="absolute -top-3 -right-3 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg"
                     >
                       <XCircle className="w-5 h-5" />
@@ -366,6 +398,7 @@ export default function SubmitReceipt() {
                     <Upload className="w-12 h-12 text-slate-500 mx-auto mb-4" />
                     <p className="text-white font-bold mb-1">Click to upload or drag and drop</p>
                     <p className="text-sm text-slate-500">PNG, JPG or PDF (max. 5MB)</p>
+                    <p className="text-xs text-slate-600 mt-2">Large mobile photos will be optimized automatically before upload.</p>
                     <input
                       type="file"
                       accept="image/*,application/pdf"
@@ -448,13 +481,13 @@ export default function SubmitReceipt() {
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || fileProcessing}
               className="btn-primary flex-[2]"
             >
-              {loading ? (
+              {loading || fileProcessing ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  Submitting...
+                  {fileProcessing ? 'Preparing file...' : 'Submitting...'}
                 </>
               ) : (
                 'Submit Receipt'
