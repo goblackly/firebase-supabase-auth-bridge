@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
+import {
+  attemptLegacyPasswordRepair,
+  buildLoginErrorMessage,
+  isInvalidCredentialsError,
+} from '../services/legacyPasswordRecovery';
 import { AlertCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -17,8 +22,9 @@ export default function Login() {
     setLoading(true);
 
     try {
+      const normalizedEmail = email.trim().toLowerCase();
       const { error } = await supabase.auth.signInWithPassword({
-        email,
+        email: normalizedEmail,
         password,
       });
 
@@ -28,7 +34,37 @@ export default function Login() {
 
       navigate('/');
     } catch (err: any) {
-      setError(err.message || 'Failed to login. Please check your credentials.');
+      let repairResult = null;
+
+      if (isInvalidCredentialsError(err)) {
+        repairResult = await attemptLegacyPasswordRepair(
+          email,
+          password,
+          String(err?.code ?? 'invalid_credentials'),
+        );
+
+        console.warn('Legacy password repair result:', {
+          email: email.trim().toLowerCase(),
+          supabaseErrorCode: err?.code ?? null,
+          repairResult,
+        });
+
+        if (repairResult?.repaired) {
+          const retry = await supabase.auth.signInWithPassword({
+            email: email.trim().toLowerCase(),
+            password,
+          });
+
+          if (!retry.error) {
+            navigate('/');
+            return;
+          }
+
+          console.error('Supabase retry sign-in failed after legacy password repair:', retry.error);
+        }
+      }
+
+      setError(buildLoginErrorMessage(err, repairResult));
     } finally {
       setLoading(false);
     }
