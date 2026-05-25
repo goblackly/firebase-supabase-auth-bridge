@@ -24,6 +24,11 @@ export type ReceiptDraft = {
   updatedAt: string;
 };
 
+export type ReceiptPendingPicker = {
+  source: 'camera' | 'files';
+  openedAt: string;
+};
+
 function getStorage(): Storage | null {
   if (typeof window === 'undefined') {
     return null;
@@ -38,6 +43,10 @@ function getStorage(): Storage | null {
 
 export function getReceiptDraftStorageKey(userKey: string): string {
   return `black-spend:receipt-draft:${userKey}`;
+}
+
+function getPendingPickerStorageKey(userKey: string): string {
+  return `black-spend:receipt-picker:${userKey}`;
 }
 
 export function saveReceiptDraft(userKey: string, draft: ReceiptDraft): void {
@@ -83,4 +92,51 @@ export function clearReceiptDraft(userKey: string): void {
   }
 
   storage.removeItem(getReceiptDraftStorageKey(userKey));
+}
+
+export function savePendingReceiptPicker(userKey: string, pendingPicker: ReceiptPendingPicker): void {
+  const storage = getStorage();
+  if (!storage) {
+    return;
+  }
+
+  storage.setItem(getPendingPickerStorageKey(userKey), JSON.stringify(pendingPicker));
+}
+
+export function loadPendingReceiptPicker(userKey: string): ReceiptPendingPicker | null {
+  const storage = getStorage();
+  if (!storage) {
+    return null;
+  }
+
+  const raw = storage.getItem(getPendingPickerStorageKey(userKey));
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<ReceiptPendingPicker>;
+    if (
+      (parsed.source !== 'camera' && parsed.source !== 'files') ||
+      typeof parsed.openedAt !== 'string'
+    ) {
+      return null;
+    }
+
+    return {
+      source: parsed.source,
+      openedAt: parsed.openedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function clearPendingReceiptPicker(userKey: string): void {
+  const storage = getStorage();
+  if (!storage) {
+    return;
+  }
+
+  storage.removeItem(getPendingPickerStorageKey(userKey));
 }

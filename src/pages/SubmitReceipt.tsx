@@ -5,8 +5,11 @@ import { syncSubmissionToSupabase, syncUserProfileToSupabase } from '../services
 import { uploadReceiptToSupabase } from '../services/receiptStorage';
 import { formatFileSize, mapReceiptSubmissionError, prepareReceiptFile } from '../services/receiptUpload';
 import {
+  clearPendingReceiptPicker,
   clearReceiptDraft,
+  loadPendingReceiptPicker,
   loadReceiptDraft,
+  savePendingReceiptPicker,
   saveReceiptDraft,
   type ReceiptDraftFileMetadata,
   type ReceiptDraftFormData,
@@ -89,7 +92,31 @@ export default function SubmitReceipt() {
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewIsImage, setPreviewIsImage] = useState(false);
+  const pickerResumeTimeoutRef = useRef<number | null>(null);
   const draftUserKey = useMemo(() => profile?.uid ?? user?.id ?? null, [profile?.uid, user?.id]);
+
+  const getCurrentFileMetadata = () =>
+    receiptFile
+      ? { name: receiptFile.name, type: receiptFile.type, size: receiptFile.size }
+      : restoredFileMetadata;
+
+  const persistCurrentDraft = () => {
+    if (!draftUserKey) {
+      return;
+    }
+
+    const fileMetadata = getCurrentFileMetadata();
+    if (isEmptyDraft(formData, fileMetadata)) {
+      clearReceiptDraft(draftUserKey);
+      return;
+    }
+
+    saveReceiptDraft(draftUserKey, {
+      formData,
+      fileMetadata,
+      updatedAt: new Date().toISOString(),
+    });
+  };
 
   useEffect(() => {
     if (!draftUserKey) {
@@ -117,6 +144,16 @@ export default function SubmitReceipt() {
       setUploadStatus({
         tone: 'info',
         message: 'Your draft was restored. You can continue where you left off.',
+      });
+    }
+
+    const pendingPicker = loadPendingReceiptPicker(draftUserKey);
+    if (pendingPicker) {
+      clearPendingReceiptPicker(draftUserKey);
+      setDraftRestoredNeedsFile(true);
+      setUploadStatus({
+        tone: 'warning',
+        message: `Your draft was restored after returning from ${pendingPicker.source === 'camera' ? 'the camera' : 'files'}. Please reselect your receipt image.`,
       });
     }
   }, [draftUserKey]);
@@ -165,14 +202,109 @@ export default function SubmitReceipt() {
   }, [receiptFile]);
 
   const setUploadReadyState = (message: string, tone: UploadStatusTone = 'success') => {
-    setUploadStatus({ tone, message });
+      setUploadStatus({ tone, message });
+  };
+
+  useEffect(() => {
+    const flushDraft = () => {
+      persistCurrentDraft();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        persistCurrentDraft();
+      }
+    };
+
+    window.addEventListener('pagehide', flushDraft);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('pagehide', flushDraft);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  });
+
+  useEffect(() => {
+    return () => {
+      if (pickerResumeTimeoutRef.current !== null) {
+        window.clearTimeout(pickerResumeTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const openPicker = (source: 'camera' | 'files') => {
+    setError('');
+    persistCurrentDraft();
+
+    if (draftUserKey) {
+      savePendingReceiptPicker(draftUserKey, {
+        source,
+        openedAt: new Date().toISOString(),
+      });
+    }
+
+    setUploadStatus({
+      tone: 'info',
+      message: source === 'camera' ? 'Opening camera...' : 'Opening files...',
+    });
+
+    const resumeMessage =
+      source === 'camera'
+        ? 'We returned from the camera, but no file was attached. Please try taking the photo again.'
+        : 'We returned from files, but no file was attached. Please choose the receipt again.';
+
+    const handleResume = () => {
+      if (pickerResumeTimeoutRef.current !== null) {
+        window.clearTimeout(pickerResumeTimeoutRef.current);
+      }
+
+      pickerResumeTimeoutRef.current = window.setTimeout(() => {
+        if (!draftUserKey) {
+          return;
+        }
+
+        const pendingPicker = loadPendingReceiptPicker(draftUserKey);
+        if (!pendingPicker || receiptFile || fileProcessing) {
+          return;
+        }
+
+        clearPendingReceiptPicker(draftUserKey);
+        setDraftRestoredNeedsFile(true);
+        setUploadStatus({
+          tone: 'warning',
+          message: resumeMessage,
+        });
+      }, 900);
+    };
+
+    window.addEventListener('focus', handleResume, { once: true });
+
+    if (source === 'camera') {
+      cameraInputRef.current?.click();
+      return;
+    }
+
+    fileInputRef.current?.click();
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, source: 'camera' | 'files') => {
     const file = e.target.files?.[0];
     e.target.value = '';
 
+    if (draftUserKey) {
+      clearPendingReceiptPicker(draftUserKey);
+    }
+
     if (!file) {
+      setDraftRestoredNeedsFile(true);
+      setUploadStatus({
+        tone: 'warning',
+        message:
+          source === 'camera'
+            ? 'No photo was attached. Please try taking the receipt photo again.'
+            : 'No file was attached. Please choose the receipt again.',
+      });
       return;
     }
 
@@ -227,6 +359,7 @@ export default function SubmitReceipt() {
 
   const handleCancel = () => {
     if (draftUserKey) {
+      clearPendingReceiptPicker(draftUserKey);
       clearReceiptDraft(draftUserKey);
     }
 
@@ -574,11 +707,7 @@ export default function SubmitReceipt() {
                 <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
                   <button
                     type="button"
-                    onClick={() => {
-                      setError('');
-                      setUploadStatus({ tone: 'info', message: 'Opening camera...' });
-                      cameraInputRef.current?.click();
-                    }}
+                    onClick={() => openPicker('camera')}
                     className="btn-primary inline-flex items-center justify-center gap-2 px-5 py-3"
                     disabled={loading || fileProcessing}
                   >
@@ -587,11 +716,7 @@ export default function SubmitReceipt() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setError('');
-                      setUploadStatus({ tone: 'info', message: 'Opening files...' });
-                      fileInputRef.current?.click();
-                    }}
+                    onClick={() => openPicker('files')}
                     className="btn-secondary inline-flex items-center justify-center gap-2 px-5 py-3"
                     disabled={loading || fileProcessing}
                   >

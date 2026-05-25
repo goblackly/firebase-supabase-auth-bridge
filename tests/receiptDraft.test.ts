@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  clearPendingReceiptPicker,
   clearReceiptDraft,
   getReceiptDraftStorageKey,
+  loadPendingReceiptPicker,
   loadReceiptDraft,
+  savePendingReceiptPicker,
   saveReceiptDraft,
   type ReceiptDraft,
 } from '../src/services/receiptDraft';
@@ -125,5 +128,23 @@ test('returns null for invalid stored draft payloads', () => {
   storage.setItem(getReceiptDraftStorageKey('user-1'), '{"broken":true}');
 
   assert.equal(loadReceiptDraft('user-1'), null);
+  restoreWindow();
+});
+
+test('saves and clears pending picker handoff state', () => {
+  installWindow(new MemoryStorage());
+
+  savePendingReceiptPicker('user-1', {
+    source: 'camera',
+    openedAt: '2026-05-25T12:30:00.000Z',
+  });
+
+  assert.deepEqual(loadPendingReceiptPicker('user-1'), {
+    source: 'camera',
+    openedAt: '2026-05-25T12:30:00.000Z',
+  });
+
+  clearPendingReceiptPicker('user-1');
+  assert.equal(loadPendingReceiptPicker('user-1'), null);
   restoreWindow();
 });
