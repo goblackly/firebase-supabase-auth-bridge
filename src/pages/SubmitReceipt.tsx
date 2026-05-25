@@ -1,9 +1,16 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { notificationService } from '../services/notificationService';
 import { syncSubmissionToSupabase, syncUserProfileToSupabase } from '../services/supabaseBridge';
 import { uploadReceiptToSupabase } from '../services/receiptStorage';
 import { formatFileSize, mapReceiptSubmissionError, prepareReceiptFile } from '../services/receiptUpload';
+import {
+  clearReceiptDraft,
+  loadReceiptDraft,
+  saveReceiptDraft,
+  type ReceiptDraftFileMetadata,
+  type ReceiptDraftFormData,
+} from '../services/receiptDraft';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
 import {
@@ -26,34 +33,142 @@ const CATEGORIES = [
   'Other'
 ];
 
+const INITIAL_FORM_DATA: ReceiptDraftFormData = {
+  receiptDate: new Date().toISOString().split('T')[0],
+  businessName: '',
+  amountSpent: '',
+  sigmaMembers: '1',
+  category: 'Restaurant',
+  blackOwned: 'yes',
+  city: '',
+  state: '',
+  businessAddress: '',
+  zipCode: '',
+  notes: '',
+};
+
+type UploadStatusTone = 'info' | 'success' | 'warning';
+
+type UploadStatus = {
+  tone: UploadStatusTone;
+  message: string;
+} | null;
+
+function isEmptyDraft(formData: ReceiptDraftFormData, fileMetadata: ReceiptDraftFileMetadata | null): boolean {
+  return (
+    formData.receiptDate === INITIAL_FORM_DATA.receiptDate &&
+    formData.businessName === '' &&
+    formData.amountSpent === '' &&
+    formData.sigmaMembers === INITIAL_FORM_DATA.sigmaMembers &&
+    formData.category === INITIAL_FORM_DATA.category &&
+    formData.blackOwned === INITIAL_FORM_DATA.blackOwned &&
+    formData.city === '' &&
+    formData.state === '' &&
+    formData.businessAddress === '' &&
+    formData.zipCode === '' &&
+    formData.notes === '' &&
+    fileMetadata === null
+  );
+}
+
 export default function SubmitReceipt() {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [loading, setLoading] = useState(false);
   const [fileProcessing, setFileProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [uploadNotice, setUploadNotice] = useState('');
-
-  const [formData, setFormData] = useState({
-    receiptDate: new Date().toISOString().split('T')[0],
-    businessName: '',
-    amountSpent: '',
-    sigmaMembers: '1',
-    category: 'Restaurant',
-    blackOwned: 'yes',
-    city: '',
-    state: '',
-    businessAddress: '',
-    zipCode: '',
-    notes: '',
-  });
+  const [uploadStatus, setUploadStatus] = useState<UploadStatus>(null);
+  const [draftRestoredNeedsFile, setDraftRestoredNeedsFile] = useState(false);
+  const [restoredFileMetadata, setRestoredFileMetadata] = useState<ReceiptDraftFileMetadata | null>(null);
+  const [formData, setFormData] = useState<ReceiptDraftFormData>(INITIAL_FORM_DATA);
 
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewIsImage, setPreviewIsImage] = useState(false);
+  const draftUserKey = useMemo(() => profile?.uid ?? user?.id ?? null, [profile?.uid, user?.id]);
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    if (!draftUserKey) {
+      return;
+    }
+
+    const draft = loadReceiptDraft(draftUserKey);
+    if (!draft) {
+      return;
+    }
+
+    setFormData(draft.formData);
+    setRestoredFileMetadata(draft.fileMetadata);
+    setReceiptFile(null);
+    setPreviewIsImage(false);
+    setPreviewUrl(null);
+
+    if (draft.fileMetadata) {
+      setDraftRestoredNeedsFile(true);
+      setUploadStatus({
+        tone: 'warning',
+        message: 'Your draft was restored. Please reselect your receipt image.',
+      });
+    } else {
+      setUploadStatus({
+        tone: 'info',
+        message: 'Your draft was restored. You can continue where you left off.',
+      });
+    }
+  }, [draftUserKey]);
+
+  useEffect(() => {
+    if (!draftUserKey || success) {
+      return;
+    }
+
+    const fileMetadata = receiptFile
+      ? { name: receiptFile.name, type: receiptFile.type, size: receiptFile.size }
+      : restoredFileMetadata;
+
+    if (isEmptyDraft(formData, fileMetadata)) {
+      clearReceiptDraft(draftUserKey);
+      return;
+    }
+
+    saveReceiptDraft(draftUserKey, {
+      formData,
+      fileMetadata,
+      updatedAt: new Date().toISOString(),
+    });
+  }, [draftUserKey, formData, receiptFile, restoredFileMetadata, success]);
+
+  useEffect(() => {
+    if (!receiptFile) {
+      setPreviewUrl(null);
+      setPreviewIsImage(false);
+      return;
+    }
+
+    if (!receiptFile.type.startsWith('image/')) {
+      setPreviewUrl(null);
+      setPreviewIsImage(false);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(receiptFile);
+    setPreviewUrl(objectUrl);
+    setPreviewIsImage(true);
+
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [receiptFile]);
+
+  const setUploadReadyState = (message: string, tone: UploadStatusTone = 'success') => {
+    setUploadStatus({ tone, message });
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, source: 'camera' | 'files') => {
     const file = e.target.files?.[0];
     e.target.value = '';
 
@@ -64,31 +179,58 @@ export default function SubmitReceipt() {
     setFileProcessing(true);
     setError('');
     setUploadNotice('');
+    setUploadStatus({
+      tone: 'info',
+      message: source === 'camera' ? 'Preparing receipt photo...' : 'Preparing receipt...',
+    });
 
     try {
       const { file: preparedFile, notice } = await prepareReceiptFile(file);
       setReceiptFile(preparedFile);
+      setRestoredFileMetadata({
+        name: preparedFile.name,
+        type: preparedFile.type,
+        size: preparedFile.size,
+      });
+      setDraftRestoredNeedsFile(false);
       setUploadNotice(notice ?? '');
-
-      if (preparedFile.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setPreviewIsImage(true);
-          setPreviewUrl(reader.result as string);
-        };
-        reader.readAsDataURL(preparedFile);
-      } else {
-        setPreviewIsImage(false);
-        setPreviewUrl(null);
-      }
+      setUploadReadyState(
+        preparedFile.type === 'application/pdf'
+          ? 'Receipt ready. PDF selected and ready to upload.'
+          : 'Receipt ready. Your image has been selected.',
+      );
     } catch (err: any) {
       setReceiptFile(null);
+      setRestoredFileMetadata(null);
       setPreviewUrl(null);
       setPreviewIsImage(false);
-      setError(err?.message || 'We could not prepare that file for upload.');
+      const message = err?.message || 'We could not prepare that file for upload.';
+      setError(message);
+      setUploadStatus({ tone: 'warning', message });
     } finally {
       setFileProcessing(false);
     }
+  };
+
+  const handleRemoveFile = () => {
+    setReceiptFile(null);
+    setRestoredFileMetadata(null);
+    setPreviewUrl(null);
+    setPreviewIsImage(false);
+    setUploadNotice('');
+    setDraftRestoredNeedsFile(false);
+    setUploadStatus({
+      tone: 'info',
+      message: 'Receipt removed. Take a new photo or choose another file.',
+    });
+  };
+
+  const handleCancel = () => {
+    if (draftUserKey) {
+      clearReceiptDraft(draftUserKey);
+    }
+
+    navigate('/');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -99,7 +241,11 @@ export default function SubmitReceipt() {
       return;
     }
     if (!receiptFile) {
-      setError('Please upload a receipt image.');
+      setError(
+        draftRestoredNeedsFile
+          ? 'Your draft was restored, but the receipt file must be selected again before submitting.'
+          : 'Please upload a receipt file before submitting.',
+      );
       return;
     }
 
@@ -228,6 +374,9 @@ export default function SubmitReceipt() {
           : Promise.resolve(),
       ]);
 
+      if (draftUserKey) {
+        clearReceiptDraft(draftUserKey);
+      }
       setSuccess(true);
       setTimeout(() => navigate('/'), 2000);
     } catch (err: any) {
@@ -369,44 +518,103 @@ export default function SubmitReceipt() {
             </h3>
 
             <div className="space-y-4">
+              {uploadStatus && (
+                <div
+                  className={`rounded-xl border p-4 text-sm ${
+                    uploadStatus.tone === 'success'
+                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                      : uploadStatus.tone === 'warning'
+                        ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                        : 'border-slate-600 bg-slate-900/50 text-slate-300'
+                  }`}
+                >
+                  {uploadStatus.message}
+                </div>
+              )}
+
               <div
                 className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all ${
-                  previewUrl ? 'border-sigma-blue bg-sigma-blue/5' : 'border-white/10 hover:border-white/20'
+                  receiptFile || restoredFileMetadata ? 'border-sigma-blue bg-sigma-blue/5' : 'border-white/10 hover:border-white/20'
                 }`}
               >
-                {receiptFile ? (
+                {receiptFile || restoredFileMetadata ? (
                   <div className="relative inline-block">
-                    {previewIsImage && previewUrl ? (
+                    {receiptFile && previewIsImage && previewUrl ? (
                       <img src={previewUrl} alt="Receipt Preview" className="max-h-64 rounded-xl shadow-lg" />
                     ) : (
                       <div className="rounded-xl border border-white/10 bg-sigma-dark/60 p-5 text-left min-w-[260px] shadow-lg">
-                        <p className="text-white font-semibold break-all">{receiptFile.name}</p>
-                        <p className="text-slate-400 text-sm mt-2">{formatFileSize(receiptFile.size)}</p>
-                        <p className="text-slate-500 text-xs mt-1">PDF ready to upload</p>
+                        <p className="text-white font-semibold break-all">{(receiptFile ?? restoredFileMetadata)?.name}</p>
+                        <p className="text-slate-400 text-sm mt-2">{formatFileSize((receiptFile ?? restoredFileMetadata)!.size)}</p>
+                        <p className="text-slate-500 text-xs mt-1">
+                          {draftRestoredNeedsFile
+                            ? 'Draft restored. Please reselect this receipt file.'
+                            : receiptFile?.type === 'application/pdf'
+                              ? 'PDF ready to upload'
+                              : 'Receipt file ready to upload'}
+                        </p>
                       </div>
                     )}
                     <button
                       type="button"
-                      onClick={() => { setReceiptFile(null); setPreviewUrl(null); setPreviewIsImage(false); setUploadNotice(''); }}
+                      onClick={handleRemoveFile}
                       className="absolute -top-3 -right-3 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg"
                     >
                       <XCircle className="w-5 h-5" />
                     </button>
                   </div>
                 ) : (
-                  <label className="cursor-pointer block">
+                  <div>
                     <Upload className="w-12 h-12 text-slate-500 mx-auto mb-4" />
-                    <p className="text-white font-bold mb-1">Click to upload or drag and drop</p>
-                    <p className="text-sm text-slate-500">PNG, JPG or PDF (max. 5MB)</p>
+                    <p className="text-white font-bold mb-1">Add your receipt</p>
+                    <p className="text-sm text-slate-500">JPG, PNG, HEIC, WEBP, GIF, or PDF (max. 5MB)</p>
                     <p className="text-xs text-slate-600 mt-2">Large mobile photos will be optimized automatically before upload.</p>
-                    <input
-                      type="file"
-                      accept="image/*,application/pdf"
-                      className="hidden"
-                      onChange={handleFileChange}
-                    />
-                  </label>
+                  </div>
                 )}
+
+                <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError('');
+                      setUploadStatus({ tone: 'info', message: 'Opening camera...' });
+                      cameraInputRef.current?.click();
+                    }}
+                    className="btn-primary inline-flex items-center justify-center gap-2 px-5 py-3"
+                    disabled={loading || fileProcessing}
+                  >
+                    <Camera className="w-4 h-4" />
+                    Take Photo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError('');
+                      setUploadStatus({ tone: 'info', message: 'Opening files...' });
+                      fileInputRef.current?.click();
+                    }}
+                    className="btn-secondary inline-flex items-center justify-center gap-2 px-5 py-3"
+                    disabled={loading || fileProcessing}
+                  >
+                    <Upload className="w-4 h-4" />
+                    Choose File
+                  </button>
+                </div>
+
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => void handleFileChange(e, 'camera')}
+                />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  className="hidden"
+                  onChange={(e) => void handleFileChange(e, 'files')}
+                />
               </div>
             </div>
           </div>
@@ -474,7 +682,7 @@ export default function SubmitReceipt() {
           <div className="flex gap-4">
             <button
               type="button"
-              onClick={() => navigate('/')}
+              onClick={handleCancel}
               className="btn-secondary flex-1"
             >
               Cancel
