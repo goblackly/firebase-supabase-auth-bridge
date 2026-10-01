@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { formatReceiptDate } from '../services/receiptDate';
 import Layout from '../components/Layout';
 import {
   CheckCircle2,
@@ -222,7 +223,7 @@ export default function AdminSubmissions() {
                       </div>
                       <span className="text-[10px] text-slate-500">{sub.category}</span>
                     </td>
-                    <td className="p-4 text-sm text-slate-400">{new Date(sub.receipt_date).toLocaleDateString()}</td>
+                    <td className="p-4 text-sm text-slate-400">{formatReceiptDate(sub.receipt_date)}</td>
                     <td className="p-4 text-sm font-bold text-white">${sub.amount_spent.toLocaleString()}</td>
                     <td className="p-4">
                       <span
@@ -291,7 +292,7 @@ export default function AdminSubmissions() {
                       <DetailItem label="Member" value={selectedSubmission.user_name} />
                       <DetailItem label="Business" value={selectedSubmission.business_name} />
                       <DetailItem label="Amount" value={`$${selectedSubmission.amount_spent.toLocaleString()}`} />
-                      <DetailItem label="Date" value={new Date(selectedSubmission.receipt_date).toLocaleDateString()} />
+                      <DetailItem label="Receipt Date" value={formatReceiptDate(selectedSubmission.receipt_date)} />
                       <DetailItem label="Category" value={selectedSubmission.category} />
                       <DetailItem label="Sigma-Owned" value={selectedSubmission.black_owned_status.toUpperCase()} />
                       <DetailItem label="Members Attended" value={selectedSubmission.sigma_members_attended} />

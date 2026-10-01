@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { formatReceiptDate, receiptPeriod } from '../services/receiptDate';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
@@ -81,10 +82,10 @@ export default function Dashboard() {
         let monthSpend = 0;
 
         approvedSubmissions.forEach((submission) => {
-          const receiptDate = new Date(submission.receipt_date);
-          if (receiptDate.getFullYear() === year) {
+          const receiptDate = receiptPeriod(submission.receipt_date);
+          if (receiptDate?.year === year) {
             yearSpend += submission.amount_spent;
-            if (receiptDate.getMonth() + 1 === month) {
+            if (receiptDate.month === month) {
               monthSpend += submission.amount_spent;
             }
           }
@@ -254,7 +255,7 @@ export default function Dashboard() {
                         </div>
                         <div>
                           <p className="font-bold text-white">{sub.business_name}</p>
-                          <p className="text-xs text-slate-500">{new Date(sub.receipt_date).toLocaleDateString()}</p>
+                          <p className="text-xs text-slate-500">{formatReceiptDate(sub.receipt_date)}</p>
                         </div>
                       </div>
                       <div className="text-right">

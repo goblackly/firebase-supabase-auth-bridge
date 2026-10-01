@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { formatReceiptDate } from '../services/receiptDate';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
 import {
@@ -111,7 +112,7 @@ export default function MySubmissions() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500">
-                      <span className="flex items-center gap-1"><Calendar className="w-4 h-4" /> {new Date(sub.receipt_date).toLocaleDateString()}</span>
+                      <span className="flex items-center gap-1"><Calendar className="w-4 h-4" /> {formatReceiptDate(sub.receipt_date)}</span>
                       <span className="flex items-center gap-1"><Store className="w-4 h-4" /> {sub.category}</span>
                       {(sub.city || sub.business_address) && (
                         <span className="flex items-center gap-1">

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { localCalendarDate } from '../services/receiptDate';
 import { useNavigate } from 'react-router-dom';
 import { notificationService } from '../services/notificationService';
 import { syncSubmissionToSupabase, syncUserProfileToSupabase } from '../services/supabaseBridge';
@@ -37,7 +38,7 @@ const CATEGORIES = [
 ];
 
 const INITIAL_FORM_DATA: ReceiptDraftFormData = {
-  receiptDate: new Date().toISOString().split('T')[0],
+  receiptDate: localCalendarDate(),
   businessName: '',
   amountSpent: '',
   sigmaMembers: '1',
