@@ -21,6 +21,7 @@ type AppNotificationPayload =
   | {
       type: 'admin-new-submission';
       payload: {
+        submissionId?: string;
         memberName: string;
         businessName: string;
         amount: number;
@@ -29,6 +30,7 @@ type AppNotificationPayload =
   | {
       type: 'member-submission-received';
       payload: {
+        submissionId?: string;
         email: string;
         lastName: string;
         businessName: string;
@@ -38,6 +40,7 @@ type AppNotificationPayload =
   | {
       type: 'member-submission-approved';
       payload: {
+        submissionId?: string;
         email: string;
         lastName: string;
         businessName: string;
@@ -47,6 +50,7 @@ type AppNotificationPayload =
   | {
       type: 'member-submission-rejected';
       payload: {
+        submissionId?: string;
         email: string;
         lastName: string;
         businessName: string;
@@ -115,7 +119,7 @@ export const notificationService = {
     }
   },
 
-  async notifyAdminNewSubmission(submissionData: { memberName: string; businessName: string; amount: number }) {
+  async notifyAdminNewSubmission(submissionData: { submissionId: string; memberName: string; businessName: string; amount: number }) {
     try {
       await sendAppNotification({
         type: 'admin-new-submission',
@@ -127,6 +131,7 @@ export const notificationService = {
   },
 
   async notifyMemberSubmissionReceived(submissionData: {
+    submissionId: string;
     email: string;
     lastName: string;
     businessName: string;
@@ -143,6 +148,7 @@ export const notificationService = {
   },
 
   async notifyMemberSubmissionApproved(submissionData: {
+    submissionId: string;
     email: string;
     lastName: string;
     businessName: string;
@@ -159,6 +165,7 @@ export const notificationService = {
   },
 
   async notifyMemberSubmissionRejected(submissionData: {
+    submissionId: string;
     email: string;
     lastName: string;
     businessName: string;

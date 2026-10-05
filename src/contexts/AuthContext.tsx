@@ -27,6 +27,7 @@ type UserRow = {
   last_name: string;
   phone: string | null;
   role: 'member' | 'admin';
+  account_mode: 'normal' | 'demo_member' | 'demo_admin';
   chapter_role: string | null;
   crossing_year: string | null;
   photo_url: string | null;
@@ -42,6 +43,7 @@ function mapUserProfile(row: UserRow): UserProfile {
     last_name: row.last_name,
     phone: row.phone ?? undefined,
     role: row.role,
+    account_mode: row.account_mode,
     chapter_role: row.chapter_role ?? undefined,
     crossing_year: row.crossing_year ?? undefined,
     photo_url: row.photo_url ?? undefined,
@@ -52,7 +54,7 @@ function mapUserProfile(row: UserRow): UserProfile {
 async function fetchProfileForUser(authUser: User): Promise<UserProfile | null> {
   let query = supabase
     .from('users')
-    .select('auth_user_id, firebase_uid, email, first_name, last_name, phone, role, chapter_role, crossing_year, photo_url, created_at')
+    .select('auth_user_id, firebase_uid, email, first_name, last_name, phone, role, account_mode, chapter_role, crossing_year, photo_url, created_at')
     .eq('auth_user_id', authUser.id)
     .maybeSingle();
 
@@ -65,7 +67,7 @@ async function fetchProfileForUser(authUser: User): Promise<UserProfile | null> 
   if (!data && authUser.email) {
     const fallback = await supabase
       .from('users')
-      .select('auth_user_id, firebase_uid, email, first_name, last_name, phone, role, chapter_role, crossing_year, photo_url, created_at')
+      .select('auth_user_id, firebase_uid, email, first_name, last_name, phone, role, account_mode, chapter_role, crossing_year, photo_url, created_at')
       .ilike('email', authUser.email)
       .maybeSingle();
 
@@ -189,7 +191,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     user,
     profile,
     loading,
-    isAdmin: profile?.role === 'admin' || user?.email === 'info@goblackly.com',
+    isAdmin: profile?.account_mode === 'demo_admin' || (profile?.account_mode === 'normal' && profile?.role === 'admin'),
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

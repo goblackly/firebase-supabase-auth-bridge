@@ -14,6 +14,7 @@ type AdminCreateUserPayload = {
   lastName?: string;
   phone?: string;
   role?: 'member' | 'admin';
+  accountMode?: 'normal' | 'demo_member' | 'demo_admin';
 };
 
 function getSupabaseConfig() {
@@ -78,7 +79,7 @@ Deno.serve(async (request) => {
 
     const { data: callerProfile, error: callerProfileError } = await adminClient
       .from('users')
-      .select('role, email')
+      .select('role, email, account_mode')
       .eq('auth_user_id', callerData.user.id)
       .maybeSingle();
 
@@ -86,7 +87,7 @@ Deno.serve(async (request) => {
       throw callerProfileError;
     }
 
-    const isAdmin = callerProfile?.role === 'admin' || callerData.user.email === 'info@goblackly.com';
+    const isAdmin = callerProfile?.role === 'admin' && callerProfile?.account_mode === 'normal';
 
     if (!isAdmin) {
       return new Response(JSON.stringify({ error: 'Admin access required' }), {
@@ -100,7 +101,8 @@ Deno.serve(async (request) => {
     const firstName = String(payload.firstName ?? '').trim();
     const lastName = String(payload.lastName ?? '').trim();
     const phone = sanitizeOptionalText(payload.phone);
-    const role = payload.role === 'admin' ? 'admin' : 'member';
+    const accountMode = ['demo_member','demo_admin'].includes(payload.accountMode ?? '') ? payload.accountMode! : 'normal';
+    const role = accountMode === 'normal' && payload.role === 'admin' ? 'admin' : 'member';
     const password = payload.password?.trim() || generateTemporaryPassword();
 
     if (!email || !firstName || !lastName) {
@@ -118,6 +120,10 @@ Deno.serve(async (request) => {
     const existingAuthUser = existingUsers?.users?.find(
       (user) => String(user.email ?? '').toLowerCase() === email
     );
+
+    if (accountMode !== 'normal' && existingAuthUser) {
+      return new Response(JSON.stringify({ error: 'This email already has an account. Use full-admin designation after checking its receipts.' }), { status: 409, headers: corsHeaders });
+    }
 
     let authUserId = existingAuthUser?.id;
 
@@ -146,12 +152,19 @@ Deno.serve(async (request) => {
           last_name: lastName,
           phone,
           role,
+          ...(accountMode !== 'normal' ? { account_mode: accountMode } : {}),
         },
         { onConflict: 'firebase_uid' }
       );
 
     if (upsertError) {
       throw upsertError;
+    }
+
+    if (accountMode !== 'normal') {
+      const { error: auditError } = await adminClient.from('business_review_history').insert({ actor_id: callerData.user.id,
+        action: 'demo_provision', details: { user: authUserId, mode: accountMode } });
+      if (auditError) throw auditError;
     }
 
     return new Response(JSON.stringify({ ok: true, user: { id: authUserId, email } }), {

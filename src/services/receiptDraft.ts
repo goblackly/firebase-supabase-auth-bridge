@@ -10,6 +10,11 @@ export type ReceiptDraftFormData = {
   businessAddress: string;
   zipCode: string;
   notes: string;
+  businessId?: string;
+  businessVersion?: string;
+  businessEntryMode?: string;
+  businessPhone?: string;
+  businessWebsite?: string;
 };
 
 export type ReceiptDraftFileMetadata = {

@@ -18,8 +18,10 @@ import AdminReports from './pages/AdminReports';
 import AdminBusinessRankings from './pages/AdminBusinessRankings';
 import AdminUsers from './pages/AdminUsers';
 import Profile from './pages/Profile';
+import Businesses from './pages/Businesses';
+import AdminDemoAccounts from './pages/AdminDemoAccounts';
 
-const PrivateRoute: React.FC<{ children: React.ReactNode; adminOnly?: boolean }> = ({ children, adminOnly }) => {
+const PrivateRoute: React.FC<{ children: React.ReactNode; adminOnly?: boolean; fullAdminOnly?: boolean }> = ({ children, adminOnly, fullAdminOnly }) => {
   const { user, profile, loading, isAdmin } = useAuth();
 
   if (loading) {
@@ -32,6 +34,7 @@ const PrivateRoute: React.FC<{ children: React.ReactNode; adminOnly?: boolean }>
 
   if (!user) return <Navigate to="/login" />;
   if (adminOnly && !isAdmin) return <Navigate to="/" />;
+  if (fullAdminOnly && (profile?.role !== 'admin' || profile?.account_mode !== 'normal')) return <Navigate to="/" />;
 
   return <>{children}</>;
 };
@@ -54,13 +57,15 @@ export default function App() {
             <Route path="/my-submissions" element={<PrivateRoute><MySubmissions /></PrivateRoute>} />
             <Route path="/leaderboard" element={<PrivateRoute><Leaderboard /></PrivateRoute>} />
             <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
+            <Route path="/businesses" element={<PrivateRoute><Businesses /></PrivateRoute>} />
 
             {/* Admin Routes */}
             <Route path="/admin" element={<PrivateRoute adminOnly><AdminDashboard /></PrivateRoute>} />
             <Route path="/admin/submissions" element={<PrivateRoute adminOnly><AdminSubmissions /></PrivateRoute>} />
-            <Route path="/admin/users" element={<PrivateRoute adminOnly><AdminUsers /></PrivateRoute>} />
+            <Route path="/admin/users" element={<PrivateRoute fullAdminOnly><AdminUsers /></PrivateRoute>} />
             <Route path="/admin/reports" element={<PrivateRoute adminOnly><AdminReports /></PrivateRoute>} />
             <Route path="/admin/businesses" element={<PrivateRoute adminOnly><AdminBusinessRankings /></PrivateRoute>} />
+            <Route path="/admin/demo" element={<PrivateRoute fullAdminOnly><AdminDemoAccounts /></PrivateRoute>} />
 
             {/* Fallback */}
             <Route path="*" element={<Navigate to="/" />} />

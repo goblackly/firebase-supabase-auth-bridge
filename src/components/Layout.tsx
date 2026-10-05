@@ -38,6 +38,7 @@ export default function Layout({ children, title }: LayoutProps) {
     { name: 'Submit Receipt', path: '/submit', icon: PlusCircle },
     { name: 'My Submissions', path: '/my-submissions', icon: History },
     { name: 'Leaderboard', path: '/leaderboard', icon: Trophy },
+    { name: 'Businesses', path: '/businesses', icon: Users },
     { name: 'Profile', path: '/profile', icon: Settings },
   ];
 
@@ -47,7 +48,8 @@ export default function Layout({ children, title }: LayoutProps) {
     { name: 'Manage Members', path: '/admin/users', icon: Users },
     { name: 'Reports', path: '/admin/reports', icon: Trophy },
     { name: 'Business Rankings', path: '/admin/businesses', icon: Trophy },
-  ];
+    { name: 'Demo Accounts', path: '/admin/demo', icon: ShieldCheck },
+  ].filter(item => profile?.account_mode !== 'demo_admin' || !['/admin/users','/admin/demo'].includes(item.path));
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -215,6 +217,7 @@ export default function Layout({ children, title }: LayoutProps) {
 
       {/* Main Content */}
       <main className="flex-1 p-4 md:p-10 overflow-x-hidden">
+        {profile?.account_mode && profile.account_mode !== 'normal' && <div role="status" className="border border-sigma-gold/30 bg-sigma-gold/10 text-sigma-gold rounded-xl p-4 mb-6">Live demo account. Reports show real chapter results; demo receipts do not count toward chapter spending. Demo administrators can review demo receipts only.</div>}
         {title && (
           <div className="mb-8">
             <h2 className="text-3xl font-bold text-white font-display">{title}</h2>

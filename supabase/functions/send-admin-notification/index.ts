@@ -1,3 +1,4 @@
+import { receiptEmailContext } from '../_shared/demoSafety.ts';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -258,6 +259,18 @@ Deno.serve(async (request) => {
     });
   }
 
+  let demo = false;
+  try {
+    const context = await receiptEmailContext(request, payload?.type,
+      (payload?.payload as { submissionId?: string })?.submissionId);
+    if (context.suppress) return new Response(JSON.stringify({ ok: true, suppressed: true }), { headers: corsHeaders });
+    demo = context.receipt.is_demo;
+    payload.payload = { ...payload.payload, email: context.member.email, lastName: context.member.last_name,
+      memberName: context.receipt.user_name, businessName: context.receipt.business_name,
+      amount: Number(context.receipt.amount_spent), adminNote: context.receipt.admin_notes } as typeof payload.payload;
+  } catch {
+    return new Response(JSON.stringify({ error: 'Notification not authorized' }), { status: 403, headers: corsHeaders });
+  }
   if (!payload?.type || !validatePayload(payload)) {
     return new Response(JSON.stringify({ error: 'Invalid notification payload' }), {
       status: 400,
@@ -266,6 +279,10 @@ Deno.serve(async (request) => {
   }
 
   const email = buildEmail(payload, adminEmail);
+  if (demo) {
+    email.subject = `[DEMO] ${email.subject}`;
+    email.html = '<p>Demo receipt only. This does not affect chapter spending.</p>' + email.html;
+  }
 
   const resendResponse = await fetch('https://api.resend.com/emails', {
     method: 'POST',

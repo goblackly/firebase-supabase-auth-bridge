@@ -1,3 +1,4 @@
+import { authenticatedCaller } from '../_shared/demoSafety.ts';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -162,6 +163,19 @@ Deno.serve(async (request) => {
   }
 
   const email = buildEmail(payload, adminEmail);
+  try {
+    const caller = await authenticatedCaller(request);
+    if (caller.profile.account_mode !== 'normal' && payload.type === 'admin-new-user') {
+      return new Response(JSON.stringify({ ok: true, suppressed: true }), { headers: corsHeaders });
+    }
+    if (!caller.fullAdmin && payload.payload.email.toLowerCase() !== caller.profile.email.toLowerCase()) throw new Error('Own account required');
+    if (caller.profile.account_mode !== 'normal') {
+      email.subject = `[DEMO] ${email.subject}`;
+      email.to = caller.profile.email;
+    }
+  } catch {
+    return new Response(JSON.stringify({ error: 'Notification not authorized' }), { status: 403, headers: corsHeaders });
+  }
 
   const resendResponse = await fetch('https://api.resend.com/emails', {
     method: 'POST',

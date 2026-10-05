@@ -11,7 +11,8 @@ import {
 } from 'lucide-react';
 import { Submission } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { fetchAllSubmissions, fetchUserContactByFirebaseUid } from '../services/supabaseReads';
+import { fetchAllSubmissions } from '../services/supabaseReads';
+import { useAuth } from '../contexts/AuthContext';
 import {
   deleteSubmissionFromSupabase,
   updateSubmissionReviewInSupabase,
@@ -19,6 +20,9 @@ import {
 import { notificationService } from '../services/notificationService';
 
 export default function AdminSubmissions() {
+  const { profile } = useAuth();
+  const demoAdmin = profile?.account_mode === 'demo_admin';
+  const [reviewMode, setReviewMode] = useState<'real' | 'demo'>(demoAdmin ? 'demo' : 'real');
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +40,7 @@ export default function AdminSubmissions() {
       setLoading(true);
 
       try {
-        const subs = await fetchAllSubmissions();
+        const subs = await fetchAllSubmissions(true);
         const flaggedSubs = subs.map((sub) => {
           const isDuplicate = subs.some(
             (other) =>
@@ -101,16 +105,11 @@ export default function AdminSubmissions() {
       setError(null);
 
       void (async () => {
-        const contact = await fetchUserContactByFirebaseUid(submission.user_id);
-
-        if (!contact?.email) {
-          return;
-        }
-
         if (status === 'approved') {
           await notificationService.notifyMemberSubmissionApproved({
-            email: contact.email,
-            lastName: contact.lastName,
+            submissionId: submission.id,
+            email: '',
+            lastName: '',
             businessName: submission.business_name,
             amount: submission.amount_spent,
           });
@@ -118,8 +117,9 @@ export default function AdminSubmissions() {
         }
 
         await notificationService.notifyMemberSubmissionRejected({
-          email: contact.email,
-          lastName: contact.lastName,
+          submissionId: submission.id,
+          email: '',
+          lastName: '',
           businessName: submission.business_name,
           amount: submission.amount_spent,
           adminNote: nextAdminNotes,
@@ -157,12 +157,17 @@ export default function AdminSubmissions() {
     const matchesSearch =
       sub.business_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (sub.user_name ?? '').toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesStatus && matchesSearch;
+    return matchesStatus && matchesSearch && (demoAdmin ? sub.is_demo : Boolean(sub.is_demo) === (reviewMode === 'demo'));
   });
 
   return (
     <Layout title="Review Submissions">
       <div className="max-w-7xl mx-auto">
+        {!demoAdmin && <div className="flex gap-3 mb-6">
+          <FilterButton active={reviewMode === 'real'} onClick={() => setReviewMode('real')}>Chapter Receipts</FilterButton>
+          <FilterButton active={reviewMode === 'demo'} onClick={() => setReviewMode('demo')}>Demo Receipts</FilterButton>
+        </div>}
+        {(demoAdmin || reviewMode === 'demo') && <p className="text-amber-300 mb-6">Demo receipts only. These never count toward real chapter results.</p>}
         {error && (
           <div className="mb-8 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex flex-col gap-3 text-red-400">
             <div className="flex items-center gap-3">
@@ -355,7 +360,7 @@ export default function AdminSubmissions() {
               </div>
 
               <div className="p-6 border-t border-white/5 bg-white/5 flex gap-4">
-                {selectedSubmission.status !== 'pending' && (
+                {!demoAdmin && selectedSubmission.status !== 'pending' && (
                   <button
                     onClick={() => setShowDeleteConfirm(true)}
                     className="btn-secondary bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"

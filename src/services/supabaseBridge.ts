@@ -76,7 +76,7 @@ export async function updateUserProfileInSupabase(
   updates: Partial<Omit<SupabaseUserProfilePayload, 'uid'>>
 ): Promise<void> {
   const payload = {
-    auth_user_id: sanitizeOptionalText(updates.auth_user_id),
+    auth_user_id: updates.auth_user_id === undefined ? undefined : sanitizeOptionalText(updates.auth_user_id),
     email: updates.email?.trim(),
     first_name: updates.first_name?.trim(),
     last_name: updates.last_name?.trim(),
@@ -157,7 +157,7 @@ export async function updateSubmissionReviewInSupabase(
   adminNotes?: string | null,
   duplicateFlag?: boolean
 ): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('submissions')
     .update({
       status,
@@ -165,10 +165,12 @@ export async function updateSubmissionReviewInSupabase(
       duplicate_flag: duplicateFlag ?? false,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', submissionId);
+    .eq('id', submissionId)
+    .select('id')
+    .single();
 
-  if (error) {
-    throw error;
+  if (error || !data) {
+    throw error ?? new Error('Submission was not updated. Refresh and verify review access.');
   }
 }
 

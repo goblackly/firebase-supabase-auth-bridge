@@ -10,6 +10,7 @@ type UserRow = {
   last_name: string;
   phone: string | null;
   role: 'member' | 'admin';
+  account_mode?: 'normal' | 'demo_member' | 'demo_admin';
   chapter_role: string | null;
   crossing_year: string | null;
   photo_url: string | null;
@@ -38,14 +39,16 @@ type SubmissionRow = {
   admin_notes: string | null;
   created_at: string;
   updated_at: string;
+  is_demo?: boolean;
 };
 
 async function mapSubmission(row: SubmissionRow): Promise<Submission> {
   return {
     id: row.id,
+    is_demo: row.is_demo,
     firebase_doc_id: row.firebase_doc_id ?? undefined,
     user_id: row.firebase_uid,
-    user_name: row.user_name,
+    user_name: row.is_demo ? `[DEMO] ${row.user_name}` : row.user_name,
     receipt_date: row.receipt_date,
     business_name: row.business_name,
     amount_spent: Number(row.amount_spent),
@@ -75,6 +78,7 @@ function mapUser(row: UserRow): UserProfile {
     last_name: row.last_name,
     phone: row.phone ?? undefined,
     role: row.role,
+    account_mode: row.account_mode,
     chapter_role: row.chapter_role ?? undefined,
     crossing_year: row.crossing_year ?? undefined,
     photo_url: row.photo_url ?? undefined,
@@ -97,10 +101,13 @@ export async function fetchUserSubmissions(firebaseUid: string): Promise<Submiss
 }
 
 export async function fetchApprovedSubmissions(): Promise<Submission[]> {
+  const demo = await demoSnapshot();
+  if (demo) return Promise.all(demo.submissions.map(mapSubmission));
   const { data, error } = await supabase
     .from('submissions')
     .select('*')
     .eq('status', 'approved')
+    .eq('is_demo', false)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -110,7 +117,9 @@ export async function fetchApprovedSubmissions(): Promise<Submission[]> {
   return Promise.all((data ?? []).map((row) => mapSubmission(row as SubmissionRow)));
 }
 
-export async function fetchAllSubmissions(): Promise<Submission[]> {
+export async function fetchAllSubmissions(includeDemo = false): Promise<Submission[]> {
+  const demo = await demoSnapshot();
+  if (demo && !includeDemo) return Promise.all(demo.submissions.map(mapSubmission));
   const { data, error } = await supabase
     .from('submissions')
     .select('*')
@@ -120,13 +129,16 @@ export async function fetchAllSubmissions(): Promise<Submission[]> {
     throw error;
   }
 
-  return Promise.all((data ?? []).map((row) => mapSubmission(row as SubmissionRow)));
+  return Promise.all((data ?? []).filter(row => includeDemo || !row.is_demo).map((row) => mapSubmission(row as SubmissionRow)));
 }
 
 export async function fetchUserCount(): Promise<number> {
+  const demo = await demoSnapshot();
+  if (demo) return demo.users.length;
   const { count, error } = await supabase
     .from('users')
-    .select('*', { count: 'exact', head: true });
+    .select('*', { count: 'exact', head: true })
+    .eq('account_mode', 'normal');
 
   if (error) {
     throw error;
@@ -136,6 +148,8 @@ export async function fetchUserCount(): Promise<number> {
 }
 
 export async function fetchAllUsers(): Promise<UserProfile[]> {
+  const demo = await demoSnapshot();
+  if (demo) return demo.users.map(mapUser);
   const { data, error } = await supabase
     .from('users')
     .select('*')
@@ -145,7 +159,16 @@ export async function fetchAllUsers(): Promise<UserProfile[]> {
     throw error;
   }
 
-  return (data ?? []).map((row) => mapUser(row as UserRow));
+  return (data ?? []).filter(row => row.account_mode === 'normal').map((row) => mapUser(row as UserRow));
+}
+
+async function demoSnapshot(): Promise<{ submissions: SubmissionRow[]; users: UserRow[] } | null> {
+  const { data: mode, error: modeError } = await supabase.rpc('account_mode');
+  if (modeError) throw modeError;
+  if (mode === 'normal') return null;
+  const { data, error } = await supabase.rpc('demo_report_snapshot');
+  if (error) throw error;
+  return data;
 }
 
 export async function fetchUserContactByFirebaseUid(firebaseUid: string): Promise<{

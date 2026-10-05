@@ -16,8 +16,11 @@ import { motion } from 'motion/react';
 import { Submission, YearlyGoal, MonthlyGoal } from '../types';
 import { fetchAllSubmissions, fetchMonthlyGoal, fetchUserCount, fetchYearlyGoal } from '../services/supabaseReads';
 import { updateGoalInSupabase, upsertGoalInSupabase } from '../services/supabaseBridge';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function AdminDashboard() {
+  const { profile } = useAuth();
+  const canManageGoals = profile?.role === 'admin' && profile?.account_mode === 'normal';
   const [stats, setStats] = useState({
     approvedSpend: 0,
     pendingSpend: 0,
@@ -242,7 +245,7 @@ export default function AdminDashboard() {
                   <h3 className="text-xl font-bold text-white">Yearly Goal Management</h3>
                   <p className="text-sm text-slate-400">Set and track the chapter's yearly spending target.</p>
                 </div>
-                {!isEditingYearlyGoal ? (
+                {!canManageGoals ? null : !isEditingYearlyGoal ? (
                   <button onClick={() => setIsEditingYearlyGoal(true)} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-all">
                     <Edit3 className="w-5 h-5" />
                   </button>
@@ -319,7 +322,7 @@ export default function AdminDashboard() {
                   <h3 className="text-xl font-bold text-white">Monthly Goal Management</h3>
                   <p className="text-sm text-slate-400">Set and track the chapter's monthly spending target.</p>
                 </div>
-                {!isEditingMonthlyGoal ? (
+                {!canManageGoals ? null : !isEditingMonthlyGoal ? (
                   <button onClick={() => setIsEditingMonthlyGoal(true)} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-all">
                     <Edit3 className="w-5 h-5" />
                   </button>

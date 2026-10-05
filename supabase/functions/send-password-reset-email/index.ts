@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { authenticatedCaller } from '../_shared/demoSafety.ts';
 
 type EmailType = 'password-reset' | 'admin-created-account';
 
@@ -43,20 +44,20 @@ function getAdminClient() {
   });
 }
 
-async function fetchLastName(email: string) {
+async function fetchMember(email: string) {
   const adminClient = getAdminClient();
   const { data, error } = await adminClient
     .from('users')
-    .select('last_name')
+    .select('last_name,account_mode')
     .ilike('email', email)
     .maybeSingle();
 
   if (error) {
     console.warn('Failed to fetch last name for account email:', error);
-    return '';
+    throw new Error('Unable to resolve account email');
   }
 
-  return String(data?.last_name ?? '').trim();
+  return data;
 }
 
 async function generateActionLink(email: string, type: EmailType) {
@@ -179,9 +180,23 @@ Deno.serve(async (request) => {
   }
 
   try {
+    const member = await fetchMember(email);
+    if (emailType === 'admin-created-account') {
+      const caller = await authenticatedCaller(request);
+      if (!caller.fullAdmin) return new Response(JSON.stringify({ error: 'Full administrator required' }), { status: 403, headers: corsHeaders });
+    } else {
+      let caller;
+      try { caller = await authenticatedCaller(request); } catch { /* Public recovery supports signed-out members. */ }
+      if (caller && caller.profile.account_mode !== 'normal' && caller.profile.email.toLowerCase() !== email) {
+        return new Response(JSON.stringify({ error: 'Demo sessions may recover their own account only' }), { status: 403, headers: corsHeaders });
+      }
+    }
     const actionLink = await generateActionLink(email, emailType);
-    const lastName = await fetchLastName(email);
-    const outboundEmail = buildEmail(email, lastName, actionLink, emailType);
+    const outboundEmail = buildEmail(email, String(member?.last_name ?? '').trim(), actionLink, emailType);
+    if (member && member.account_mode !== 'normal') {
+      outboundEmail.subject = `[DEMO] ${outboundEmail.subject}`;
+      outboundEmail.html = '<p>This is a Black Spend demo account. Demo receipts never count toward chapter results.</p>' + outboundEmail.html;
+    }
 
     const resendResponse = await fetch('https://api.resend.com/emails', {
       method: 'POST',

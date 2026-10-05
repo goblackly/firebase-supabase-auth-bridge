@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { localCalendarDate } from '../services/receiptDate';
 import { useNavigate } from 'react-router-dom';
 import { notificationService } from '../services/notificationService';
-import { syncSubmissionToSupabase, syncUserProfileToSupabase } from '../services/supabaseBridge';
+import { submitBusinessReceipt } from '../services/businessDirectory';
+import BusinessPicker from '../components/BusinessPicker';
 import { uploadReceiptToSupabase } from '../services/receiptStorage';
 import { formatFileSize, mapReceiptSubmissionError, prepareReceiptFile } from '../services/receiptUpload';
 import {
@@ -129,7 +130,7 @@ export default function SubmitReceipt() {
       return;
     }
 
-    setFormData(draft.formData);
+    setFormData({ ...INITIAL_FORM_DATA, ...draft.formData });
     setRestoredFileMetadata(draft.fileMetadata);
     setReceiptFile(null);
     setPreviewIsImage(false);
@@ -184,6 +185,11 @@ export default function SubmitReceipt() {
     if (!receiptFile) {
       setPreviewUrl(null);
       setPreviewIsImage(false);
+      return;
+    }
+
+    if (!formData.businessEntryMode || !formData.city.trim() || !formData.state.trim()) {
+      setError('Select a business or choose Add a new business, then confirm its city and state.');
       return;
     }
 
@@ -417,75 +423,9 @@ export default function SubmitReceipt() {
         updated_at: new Date().toISOString(),
       };
 
-      if (profile) {
-        try {
-          await syncUserProfileToSupabase({
-            uid: profile.uid,
-            auth_user_id: user.id,
-            email: profile.email ?? user.email ?? '',
-            first_name: profile.first_name,
-            last_name: profile.last_name,
-            phone: profile.phone,
-            role: profile.role,
-            chapter_role: profile.chapter_role,
-            crossing_year: profile.crossing_year,
-            photo_url: profile.photo_url,
-          });
-
-          await syncSubmissionToSupabase({
-            firebase_uid: profile.uid,
-            user_name: submissionData.user_name,
-            receipt_date: submissionData.receipt_date,
-            business_name: submissionData.business_name,
-            amount_spent: submissionData.amount_spent,
-            sigma_members_attended: submissionData.sigma_members_attended,
-            receipt_file_url: submissionData.receipt_file_url,
-            category: submissionData.category,
-            black_owned_status: submissionData.black_owned_status as 'yes' | 'no',
-            city: submissionData.city,
-            state: submissionData.state,
-            business_address: submissionData.business_address,
-            zip_code: submissionData.zip_code,
-            notes: submissionData.notes,
-            status: 'pending',
-          });
-        } catch (syncError) {
-          throw syncError;
-        }
-      } else if (user.email) {
-        await syncUserProfileToSupabase({
-          uid: user.id,
-          auth_user_id: user.id,
-          email: user.email,
-          first_name: profile?.first_name ?? '',
-          last_name: profile?.last_name ?? '',
-          phone: profile?.phone,
-          role: profile?.role ?? (user.email === 'info@goblackly.com' ? 'admin' : 'member'),
-          chapter_role: profile?.chapter_role,
-          crossing_year: profile?.crossing_year,
-          photo_url: profile?.photo_url,
-        });
-
-        await syncSubmissionToSupabase({
-          firebase_uid: user.id,
-          user_name: submissionData.user_name,
-          receipt_date: submissionData.receipt_date,
-          business_name: submissionData.business_name,
-          amount_spent: submissionData.amount_spent,
-          sigma_members_attended: submissionData.sigma_members_attended,
-          receipt_file_url: submissionData.receipt_file_url,
-          category: submissionData.category,
-          black_owned_status: submissionData.black_owned_status as 'yes' | 'no',
-          city: submissionData.city,
-          state: submissionData.state,
-          business_address: submissionData.business_address,
-          zip_code: submissionData.zip_code,
-          notes: submissionData.notes,
-          status: 'pending',
-        });
-      } else {
-        throw new Error('Cannot sync submission to Supabase without a loaded user profile or email.');
-      }
+      const submissionId = await submitBusinessReceipt({ ...submissionData,
+        phone: formData.businessPhone, website: formData.businessWebsite,
+      }, formData.businessId, formData.businessVersion);
 
       const memberName = `${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim() || 'Black Spend Member';
       const memberEmail = profile?.email ?? user.email ?? '';
@@ -494,12 +434,14 @@ export default function SubmitReceipt() {
 
       void Promise.allSettled([
         notificationService.notifyAdminNewSubmission({
+          submissionId,
           memberName,
           businessName: formData.businessName,
           amount,
         }),
         memberEmail
           ? notificationService.notifyMemberSubmissionReceived({
+              submissionId,
               email: memberEmail,
               lastName: memberLastName,
               businessName: formData.businessName,
@@ -577,19 +519,7 @@ export default function SubmitReceipt() {
                 </div>
               </div>
 
-              <div>
-                <label className="label-text">Business Name</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    required
-                    value={formData.businessName}
-                    onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
-                    className="input-field w-full px-4"
-                    placeholder="e.g. Joe's BBQ"
-                  />
-                </div>
-              </div>
+              <BusinessPicker value={formData} onChange={setFormData} />
 
               <div>
                 <label className="label-text">Amount Spent</label>

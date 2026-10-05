@@ -10,6 +10,7 @@ export interface UserProfile {
   email: string;
   phone?: string;
   role: UserRole;
+  account_mode?: 'normal' | 'demo_member' | 'demo_admin';
   chapter_role?: string;
   crossing_year?: string;
   photo_url?: string;
@@ -19,6 +20,7 @@ export interface UserProfile {
 export interface Submission {
   id: string;
   firebase_doc_id?: string;
+  is_demo?: boolean;
   user_id: string;
   user_name?: string; // Denormalized for display
   receipt_date: string;
