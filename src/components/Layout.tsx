@@ -46,6 +46,7 @@ export default function Layout({ children, title }: LayoutProps) {
     { name: 'Review Submissions', path: '/admin/submissions', icon: History },
     { name: 'Manage Members', path: '/admin/users', icon: Users },
     { name: 'Reports', path: '/admin/reports', icon: Trophy },
+    { name: 'Business Rankings', path: '/admin/businesses', icon: Trophy },
   ];
 
   const isActive = (path: string) => location.pathname === path;

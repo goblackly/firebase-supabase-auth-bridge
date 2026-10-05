@@ -15,6 +15,7 @@ import MySubmissions from './pages/MySubmissions';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminSubmissions from './pages/AdminSubmissions';
 import AdminReports from './pages/AdminReports';
+import AdminBusinessRankings from './pages/AdminBusinessRankings';
 import AdminUsers from './pages/AdminUsers';
 import Profile from './pages/Profile';
 
@@ -59,6 +60,7 @@ export default function App() {
             <Route path="/admin/submissions" element={<PrivateRoute adminOnly><AdminSubmissions /></PrivateRoute>} />
             <Route path="/admin/users" element={<PrivateRoute adminOnly><AdminUsers /></PrivateRoute>} />
             <Route path="/admin/reports" element={<PrivateRoute adminOnly><AdminReports /></PrivateRoute>} />
+            <Route path="/admin/businesses" element={<PrivateRoute adminOnly><AdminBusinessRankings /></PrivateRoute>} />
 
             {/* Fallback */}
             <Route path="*" element={<Navigate to="/" />} />
