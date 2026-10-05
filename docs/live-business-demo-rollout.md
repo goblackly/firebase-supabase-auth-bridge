@@ -2,7 +2,10 @@
 
 ## Status
 
-Implementation is on `codex/live-business-directory-demo`. Frontend release is pending.
+Implementation is on `codex/live-business-directory-demo`. Frontend commit
+`0c6c10da0a9db735286b71eb77212a6f9878aa18` is deployed and verified on
+`https://blackspend.pbskus.net` (Vercel deployment
+`dpl_Av95PoZAH4h5ByqYrgWi9B5WxaGH`).
 The directory/demo migration and conservative complete-address follow-up were
 applied through the Supabase browser SQL editor. All five required Edge Functions
 are deployed; password recovery and account creation were updated in the browser.
@@ -10,7 +13,15 @@ Historical linking completed for complete exact branch identities, with an
 in-transaction assertion that original receipt fields remained unchanged.
 After linking, 38 approved receipts have business references; approved 2026
 spending remains 97 receipts and $21,938.20.
-Do not deploy the frontend before the database migration and Edge Functions.
+The live directory contains 32 approved business locations; name search was
+verified with WCM Digital. Both restricted accounts were created through the
+live full-admin interface: `admin@pbskus.net` and `demo@pbskus.net`.
+Passwords and invitations are pending private operator setup and inbox confirmation.
+An authenticated-role SQL transaction for the demo admin verified zero readable
+real receipt rows, zero other member profiles, and zero receipt storage objects,
+while the sanitized snapshot returned 97 approved reporting rows. The transaction
+was rolled back. This proves those database read boundaries, not browser login
+or the complete write/notification acceptance suite.
 The read-only production baseline on October 5, 2026 was 97 approved 2026
 receipts totaling $21,938.20, with zero canonical business records. Refresh
 this baseline at rollout because brothers can submit and approve receipts.
@@ -77,6 +88,6 @@ and audit history rather than dropping production columns or tables.
 Local PostgreSQL tests cover migration execution, exact matching, branch
 separation, missing-address separation, demo RLS, real totals, consolidation
 undo, archiving, and anonymous denial. Browser/device handoff, actual concurrent
-transactions, live email delivery, production permissions and CSV downloads
-still require the live acceptance checks. Dependency audit reported 17
+transactions, live email delivery, remaining production write permissions and CSV
+downloads still require the live acceptance checks. Dependency audit reported 17
 vulnerabilities during development installation; remediation is not verified.

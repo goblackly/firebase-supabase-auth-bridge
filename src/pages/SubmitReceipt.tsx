@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { localCalendarDate } from '../services/receiptDate';
 import { useNavigate } from 'react-router-dom';
 import { notificationService } from '../services/notificationService';
@@ -10,7 +10,7 @@ import {
   clearPendingReceiptPicker,
   clearReceiptDraft,
   loadPendingReceiptPicker,
-  loadReceiptDraft,
+  restoreReceiptDraft,
   savePendingReceiptPicker,
   saveReceiptDraft,
   type ReceiptDraftFileMetadata,
@@ -95,7 +95,8 @@ export default function SubmitReceipt() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewIsImage, setPreviewIsImage] = useState(false);
   const pickerResumeTimeoutRef = useRef<number | null>(null);
-  const draftUserKey = useMemo(() => profile?.uid ?? user?.id ?? null, [profile?.uid, user?.id]);
+  const draftUserKey = profile && user ? user.id : null;
+  const [hydratedDraftKey, setHydratedDraftKey] = useState<string | null>(null);
 
   const getCurrentFileMetadata = () =>
     receiptFile
@@ -103,7 +104,7 @@ export default function SubmitReceipt() {
       : restoredFileMetadata;
 
   const persistCurrentDraft = () => {
-    if (!draftUserKey) {
+    if (!draftUserKey || hydratedDraftKey !== draftUserKey) {
       return;
     }
 
@@ -125,7 +126,8 @@ export default function SubmitReceipt() {
       return;
     }
 
-    const draft = loadReceiptDraft(draftUserKey);
+    const draft = restoreReceiptDraft(draftUserKey, profile?.uid);
+    setHydratedDraftKey(draftUserKey);
     if (!draft) {
       return;
     }
@@ -161,7 +163,7 @@ export default function SubmitReceipt() {
   }, [draftUserKey]);
 
   useEffect(() => {
-    if (!draftUserKey || success) {
+    if (!draftUserKey || hydratedDraftKey !== draftUserKey || success) {
       return;
     }
 
@@ -179,7 +181,7 @@ export default function SubmitReceipt() {
       fileMetadata,
       updatedAt: new Date().toISOString(),
     });
-  }, [draftUserKey, formData, receiptFile, restoredFileMetadata, success]);
+  }, [draftUserKey, hydratedDraftKey, formData, receiptFile, restoredFileMetadata, success]);
 
   useEffect(() => {
     if (!receiptFile) {

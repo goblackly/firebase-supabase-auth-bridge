@@ -6,6 +6,7 @@ import {
   getReceiptDraftStorageKey,
   loadPendingReceiptPicker,
   loadReceiptDraft,
+  restoreReceiptDraft,
   savePendingReceiptPicker,
   saveReceiptDraft,
   type ReceiptDraft,
@@ -101,6 +102,30 @@ test('clears a saved receipt draft', () => {
   clearReceiptDraft('user-1');
 
   assert.equal(loadReceiptDraft('user-1'), null);
+  restoreWindow();
+});
+
+test('migrates legacy drafts to the stable auth ID without resurrecting discarded drafts', () => {
+  installWindow(new MemoryStorage());
+  const draft = makeDraft();
+  draft.formData.businessId = 'business-1';
+  draft.formData.businessVersion = '2026-10-05T12:00:00Z';
+  saveReceiptDraft('legacy-uid', draft);
+  assert.deepEqual(restoreReceiptDraft('auth-id', 'legacy-uid'), draft);
+  assert.equal(loadReceiptDraft('legacy-uid'), null);
+  clearReceiptDraft('auth-id');
+  assert.equal(restoreReceiptDraft('auth-id', 'legacy-uid'), null);
+  restoreWindow();
+});
+
+test('prefers the current auth-ID draft over an older legacy copy', () => {
+  installWindow(new MemoryStorage());
+  saveReceiptDraft('legacy-uid', makeDraft());
+  const current = makeDraft();
+  current.formData.businessName = 'Current business';
+  saveReceiptDraft('auth-id', current);
+  assert.deepEqual(restoreReceiptDraft('auth-id', 'legacy-uid'), current);
+  assert.equal(loadReceiptDraft('legacy-uid'), null);
   restoreWindow();
 });
 

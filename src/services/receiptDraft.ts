@@ -99,6 +99,21 @@ export function clearReceiptDraft(userKey: string): void {
   storage.removeItem(getReceiptDraftStorageKey(userKey));
 }
 
+export function restoreReceiptDraft(userKey: string, legacyKey?: string): ReceiptDraft | null {
+  const current = loadReceiptDraft(userKey);
+  if (!legacyKey || legacyKey === userKey) return current;
+  if (current) {
+    clearReceiptDraft(legacyKey);
+    return current;
+  }
+  const legacy = loadReceiptDraft(legacyKey);
+  if (!legacy) return null;
+  saveReceiptDraft(userKey, legacy);
+  // Keep the legacy copy if browser storage could not save the new key.
+  if (loadReceiptDraft(userKey)) clearReceiptDraft(legacyKey);
+  return legacy;
+}
+
 export function savePendingReceiptPicker(userKey: string, pendingPicker: ReceiptPendingPicker): void {
   const storage = getStorage();
   if (!storage) {
