@@ -6,6 +6,12 @@ Implementation is on `codex/live-business-directory-demo`. Frontend commit
 `0c6c10da0a9db735286b71eb77212a6f9878aa18` is deployed and verified on
 `https://blackspend.pbskus.net` (Vercel deployment
 `dpl_Av95PoZAH4h5ByqYrgWi9B5WxaGH`).
+Draft recovery follow-up `8e5776db917dcb7d744268397a2961e0741fb5b7` is deployed
+as `dpl_HzJ16pt4VDw2pJuiSMSRJxzRMkjs`. The custom domain serves the matching
+`index-B3yLPUzd.js` bundle. A live selection/reload test restored the branch ID,
+location, ZIP and category, with the inline restored-draft notice. The test-only
+draft was cancelled without submitting a receipt. All 28 local tests, typecheck
+and production build passed for this release.
 The directory/demo migration and conservative complete-address follow-up were
 applied through the Supabase browser SQL editor. All five required Edge Functions
 are deployed; password recovery and account creation were updated in the browser.
@@ -22,6 +28,21 @@ real receipt rows, zero other member profiles, and zero receipt storage objects,
 while the sanitized snapshot returned 97 approved reporting rows. The transaction
 was rolled back. This proves those database read boundaries, not browser login
 or the complete write/notification acceptance suite.
+An additional live authenticated-role rollback test confirmed no demo-admin
+updates to real submissions, user roles or goals, and denial of historical linking
+and consolidation. A separate rollback transaction inserted test storage metadata
+(not a physical receipt file), submitted as the demo brother, and approved then
+rejected as the demo admin. Both receipt and business were demo-isolated; the
+receipt date stayed September 30 and real totals/counts remained unchanged.
+These are database acceptance checks, not a signed-in browser upload or email test.
+Live CSV download remains unverified because the browser connection timed out
+dispatching the export control. No download-history bypass was used.
+The aggregate-only `20261006_000008_demo_pending_summary.sql` migration was applied
+through the browser and reconciled against live pending count/spend (currently
+zero). PostgreSQL tests exercise a nonzero pending set and confirm that only
+count/spend are returned, demo receipts are excluded, and anonymous access fails.
+The demo dashboard consumes this summary rather than inferring pending counts
+from its approved-only sanitized report rows.
 The read-only production baseline on October 5, 2026 was 97 approved 2026
 receipts totaling $21,938.20, with zero canonical business records. Refresh
 this baseline at rollout because brothers can submit and approve receipts.

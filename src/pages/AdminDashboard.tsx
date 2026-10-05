@@ -14,12 +14,13 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Submission, YearlyGoal, MonthlyGoal } from '../types';
-import { fetchAllSubmissions, fetchMonthlyGoal, fetchUserCount, fetchYearlyGoal } from '../services/supabaseReads';
+import { fetchAllSubmissions, fetchDemoPendingSummary, fetchMonthlyGoal, fetchUserCount, fetchYearlyGoal } from '../services/supabaseReads';
 import { updateGoalInSupabase, upsertGoalInSupabase } from '../services/supabaseBridge';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function AdminDashboard() {
   const { profile } = useAuth();
+  const isDemo = profile?.account_mode === 'demo_admin' || profile?.account_mode === 'demo_member';
   const canManageGoals = profile?.role === 'admin' && profile?.account_mode === 'normal';
   const [stats, setStats] = useState({
     approvedSpend: 0,
@@ -51,11 +52,12 @@ export default function AdminDashboard() {
         const year = now.getFullYear();
         const month = now.getMonth() + 1;
 
-        const [submissions, memberCount, currentYearlyGoal, currentMonthlyGoal] = await Promise.all([
+        const [submissions, memberCount, currentYearlyGoal, currentMonthlyGoal, demoPending] = await Promise.all([
           fetchAllSubmissions(),
           fetchUserCount(),
           fetchYearlyGoal(year),
           fetchMonthlyGoal(year, month),
+          isDemo ? fetchDemoPendingSummary() : Promise.resolve(null),
         ]);
 
         if (cancelled) {
@@ -93,9 +95,9 @@ export default function AdminDashboard() {
 
         setStats({
           approvedSpend: approvedTotal,
-          pendingSpend: pendingTotal,
+          pendingSpend: demoPending?.spend ?? pendingTotal,
           approvedCount,
-          pendingCount,
+          pendingCount: demoPending?.count ?? pendingCount,
           memberCount,
           businessCount: businesses.size,
           currentMonthSpend: monthSpend,
@@ -147,7 +149,7 @@ export default function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isDemo]);
 
   const formatTime = (date: Date) => {
     const now = new Date();

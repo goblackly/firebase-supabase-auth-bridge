@@ -147,6 +147,12 @@ export async function fetchUserCount(): Promise<number> {
   return count ?? 0;
 }
 
+export async function fetchDemoPendingSummary(): Promise<{ count: number; spend: number }> {
+  const { data, error } = await supabase.rpc('demo_pending_summary');
+  if (error) throw error;
+  return { count: Number(data.count), spend: Number(data.spend) };
+}
+
 export async function fetchAllUsers(): Promise<UserProfile[]> {
   const demo = await demoSnapshot();
   if (demo) return demo.users.map(mapUser);

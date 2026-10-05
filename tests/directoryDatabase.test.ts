@@ -36,7 +36,7 @@ test('directory migration, matching, reports and demo isolation against PostgreS
       create function public.current_user_role() returns text language sql stable security definer as $$select role from public.users where auth_user_id=auth.uid()$$;
       create function public.is_admin() returns boolean language sql stable security definer as $$select coalesce(public.current_user_role()='admin',false)$$;
     `);
-    for (const file of ['20261005_000005_business_rankings.sql', '20261006_000006_directory_demo.sql', '20261006_000007_complete_business_addresses.sql']) {
+    for (const file of ['20261005_000005_business_rankings.sql', '20261006_000006_directory_demo.sql', '20261006_000007_complete_business_addresses.sql', '20261006_000008_demo_pending_summary.sql']) {
       await db.exec(await readFile(new URL(`../supabase/migrations/${file}`, import.meta.url), 'utf8'));
     }
     for (const address of ['N. Greenwood Ave', 'A spot with a blend of culture', '123', '']) {
@@ -73,6 +73,10 @@ test('directory migration, matching, reports and demo isolation against PostgreS
     await db.exec(`update public.submissions set status='approved' where id='${demoId}'`);
     const report = (await db.query<{ data: any }>('select public.demo_report_snapshot() data')).rows[0].data;
     assert.equal(report.submissions.length, 2);
+    const pending = (await db.query<{ data: any }>('select public.demo_pending_summary() data')).rows[0].data;
+    assert.deepEqual(Object.keys(pending).sort(), ['count', 'spend']);
+    assert.equal(Number(pending.count), 3);
+    assert.equal(Number(pending.spend), 30);
     assert.equal(report.submissions.reduce((n: number,r: any) => n + Number(r.amount_spent),0),20);
     assert.ok(report.submissions.every((r: any) => !r.receipt_file_url && !r.notes));
     assert.equal((await db.query<{ n: number }>('select count(*)::int n from public.submissions')).rows[0].n, 1);
@@ -99,5 +103,6 @@ test('directory migration, matching, reports and demo isolation against PostgreS
     assert.equal((await db.query('select id from public.submissions')).rows.length,0);
     await db.exec("reset role; set role anon; select set_config('request.uid','',false);");
     await assert.rejects(db.query('select public.business_catalog(true)'));
+    await assert.rejects(db.query('select public.demo_pending_summary()'));
   } finally { await db.close(); }
 });
